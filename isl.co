@@ -9,7 +9,8 @@ class Gradient
 	addPoint: !(color, point) -> @points.push {color, point}
 	getColor: !(point) ->
 		if not @bitmap then @bitmap = @render() 
-		point = 0 >? point <? 1
+		if point < 0 then point = 0
+		if point > 1 then point = 1
 		offset = (0 | point * @bitmap.width) * 4
 		data = @bitmap.data
 		return "rgb(#{data[offset]}, #{data[offset+1]}, #{data[offset+2]})"
@@ -18,7 +19,6 @@ class Gradient
 		canvas = document.createElement("canvas")
 		canvas.width = @resolution
 		canvas.height = 10
-		console.log @points
 		ctx = canvas.getContext("2d")
 		gradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
 		for {color, point} of @points
@@ -73,12 +73,10 @@ offset = (poly, delta) ->
 	miterLimit = 0
 	offsetPolygons = cpr.OffsetPolygons([poly2clipper(poly)], delta, joinType, miterLimit, true)
 	cleanedPolygons = ClipperLib.Clean(offsetPolygons, 2.5)
-	return clipper2poly(cleanedPolygons.0)
+	return (for cleanedPolygons => clipper2poly(&))
 	
-jitter = (poly, ix, iy) -> for [x, y] of poly => [x + rand(-ix, ix), y + rand(-iy, iy)]
-
-
-
+jitterPoly = (poly, ix, iy) -> for [x, y] of poly => [x + rand(-ix, ix), y + rand(-iy, iy)]
+jitterPolys = (polys, ix, iy) -> (for polys => jitterPoly(&, ix, iy))
 
 main = ->
 	svg = SVG(document.body)
@@ -101,27 +99,35 @@ main = ->
 
 	islets = (generateIslet() for x from 0 til 15)
 
-	outline = offset(merge(islets), 10)
-	outline.height = 0
-	heightLines = [outline]
+	layers = [merge(islets)]#offset(merge(islets), 5)
+	for layers => &height = 0
+	openLayers = [].concat(layers)
+	maxHeight = randint(200, 400)
+	while openLayers.length
+		layer = openLayers.shift()
+		continue if rand(0, 1) < 0.05  # Chance to skip
+		break if layer.height > maxHeight
+		heightIncrease = randint(5, 50)
+		offsetValue = rand(0.9, 1.1) * heightIncrease
+		layerJitter = randint(2, 5)
+		newLayers = offset(layer, -offsetValue)
+		if newLayers.length
+			console.log newLayers
+			newLayers = jitterPolys(newLayers, layerJitter, layerJitter)
+			for newLayers => &height = layer.height + heightIncrease
+			openLayers = openLayers.concat(newLayers)
+			layers = layers.concat(newLayers)
 
-	for x from 0 til 7
-		n = -randint(10, 30)
-		lastHeightLine = heightLines[heightLines.length - 1]
-		nextHeightLine = offset(lastHeightLine, n)
-		break if not nextHeightLine.length
-		nextHeightLine = jitter(nextHeightLine, 3, 3)
-		nextHeightLine.height = lastHeightLine.height + Math.abs(n)
-		heightLines.push nextHeightLine
+	#maxHeight = Math.max.apply(null, (for layers => &height))
 
-	maxHeight = heightLines[heightLines.length - 1].height
-
-	for heightLine, i of heightLines
-		cOffset = heightLine.height / maxHeight
-		console.log cOffset
+	for layer of layers
+		cOffset = layer.height / maxHeight
 		color = colorMap.getColor(cOffset)
-		svg.polygon(heightLine).stroke({width: 1, color: if i == 0 then 'black' else 'silver'}).fill(color)
+		outline = (if layer.height == 0 then 'black' else 'rgba(0,0,0,0.2)')
+		poly = svg.polygon(layer).stroke({width: 1, color: outline}).fill(color)
+		poly.node.setAttribute("terr-height", layer.height)
+		poly.node.setAttribute("terr-coff", cOffset)
 
-	#for islets => svg.polygon(&).stroke({width: 1}).fill('none')
+	for islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
 
 main()
