@@ -84,7 +84,7 @@ merge = (polys) ->
 	result = clipper2poly(solution_polygons.0)
 	return result
 
-offset = (poly, delta) ->
+outsetPoly = (poly, delta) ->
 	cpr = new ClipperLib.Clipper()
 	joinType = ClipperLib.JoinType.jtMiter
 	miterLimit = 0
@@ -94,9 +94,11 @@ offset = (poly, delta) ->
 	
 
 jitterPoly = (rng, poly, ix, iy) -> for [x, y] of poly => [x + rng.uniform(-ix, ix), y + rng.uniform(-iy, iy)]
+offsetPoly = (poly, ix, iy) -> for [x, y] of poly => [x + ix, y + iy]
 
 IntParam = (name, value, min=0, max=100) -> {name, value, min, max, type: "int"}
 FloatParam = (name, value, min=0, max=1) -> {name, value, min, max, type: "float"}
+BoolParam = (name, value) -> {name, value: !!value, type: "bool"}
 
 class IslandGenerator
 	@PARAMS = [
@@ -107,7 +109,17 @@ class IslandGenerator
 		* FloatParam("isletMaxRadius", 0.3)
 		* IntParam("isletMinPoints", 7)
 		* IntParam("isletMaxPoints", 25)
+		* FloatParam("isletJagginess", 0.2)
+		* BoolParam("isletSeparateRadii", true)
 
+		* FloatParam("islandInitialOutset", 0)
+		* IntParam("minHeightIncrease", 5)
+		* IntParam("maxHeightIncrease", 50)
+		* IntParam("minHeightInsetRatio", 0.9, 0, 2)
+		* IntParam("maxHeightInsetRatio", 1.1, 0, 2)
+		* IntParam("minLayerJitter", 2)
+		* IntParam("maxLayerJitter", 5)
+		* IntParam("layerOffsetSize", 5)
 	]
 
 	(seed=null) ->
@@ -125,16 +137,20 @@ class IslandGenerator
 		maxMul = 0.5 + @params.isletSpread
 		cx = @rng.uniform(width * minMul, width * maxMul)
 		cy = @rng.uniform(height * minMul, height * maxMul)
-		minRadius = Math.min(width, height) * @params.isletMinRadius
-		maxRadius = Math.min(width, height) * @params.isletMaxRadius
-		radius = @rng.uniform(minRadius, maxRadius)
+		maxRadius = @rng.uniform(
+			Math.min(width, height) * @params.isletMinRadius,
+			Math.min(width, height) * @params.isletMaxRadius
+		)
+		minRadius = maxRadius - maxRadius * @params.isletJagginess
 		nPoints = @rng.uniformInt(@params.isletMinPoints, @params.isletMaxPoints)
 		points = []
 
 		for p from 0 til nPoints
 			i = p / nPoints
-			xRadius = @rng.uniform(radius * 0.7, radius)
-			yRadius = @rng.uniform(radius * 0.7, radius)
+			xRadius = @rng.uniform(minRadius, maxRadius)
+			yRadius = @rng.uniform(minRadius, maxRadius)
+			if not @params.isletSeparateRadii then
+				xRadius = yRadius = (xRadius + yRadius) * 0.5
 			x = cx + Math.cos(i * PI2) * xRadius
 			y = cy + Math.sin(i * PI2) * yRadius
 			points.push [x, y]
@@ -146,7 +162,7 @@ class IslandGenerator
 		nIslets = @rng.uniformInt(@params.isletMinN, @params.isletMaxN)
 		@islets = islets = (@generateIslet() for x from 0 til nIslets)
 
-		layers = [merge(islets)]#offset(merge(islets), 5)
+		layers = outsetPoly(merge(islets), @params.islandInitialOutset)
 		for layers => &height = 0
 		openLayers = [].concat(layers)
 		@maxHeight = maxHeight = @rng.uniformInt(200, 400)
@@ -159,12 +175,15 @@ class IslandGenerator
 			if layer.height > maxHeight
 				console.log "maxheight #{maxHeight} reached"
 				break
-			heightIncrease = @rng.uniformInt(5, 50)
-			offsetValue = @rng.uniform(0.9, 1.1) * heightIncrease
-			layerJitter = @rng.uniformInt(2, 5)
-			newLayers = offset(layer, -offsetValue)
+			heightIncrease = @rng.uniformInt(@params.minHeightIncrease, @params.maxHeightIncrease)
+			offsetValue = @rng.uniform(@params.minHeightInsetRatio, @params.maxHeightInsetRatio) * heightIncrease
+			layerJitter = @rng.uniformInt(@params.minLayerJitter, @params.maxLayerJitter)
+			layerXOffset = @rng.uniformInt(-@params.layerOffsetSize, @params.layerOffsetSize)
+			layerYOffset = @rng.uniformInt(-@params.layerOffsetSize, @params.layerOffsetSize)
+			
+			newLayers = outsetPoly(layer, -offsetValue)
 			if newLayers.length
-				newLayers = (for newLayers => jitterPoly(@rng, &, layerJitter, layerJitter))
+				newLayers = (for newLayers => offsetPoly(jitterPoly(@rng, &, layerJitter, layerJitter), layerXOffset, layerYOffset))
 				for newLayers => &height = layer.height + heightIncrease
 				openLayers = openLayers.concat(newLayers)
 				layers = layers.concat(newLayers)
@@ -201,12 +220,18 @@ class IslandGenerator
 			poly.node.setAttribute("terr-height", layer.height)
 			poly.node.setAttribute("terr-coff", cOffset)
 
-		for @islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
+		#for @islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
+
+makeUI = !->
+	for param of IslandGenerator.PARAMS
+		console.log param
 
 
 main = !->
-	window.ig = ig = new IslandGenerator("hurf a derp")
+	window.ig = ig = new IslandGenerator("dkkkhurf a der3")
 	ig.generate()
 	ig.draw()
+
+makeUI()
 
 main()
