@@ -95,30 +95,56 @@ offset = (poly, delta) ->
 
 jitterPoly = (rng, poly, ix, iy) -> for [x, y] of poly => [x + rng.uniform(-ix, ix), y + rng.uniform(-iy, iy)]
 
+IntParam = (name, value, min=0, max=100) -> {name, value, min, max, type: "int"}
+FloatParam = (name, value, min=0, max=1) -> {name, value, min, max, type: "float"}
+
 class IslandGenerator
+	@PARAMS = [
+		* IntParam("isletMinN", 2)
+		* IntParam("isletMaxN", 15)
+		* FloatParam("isletSpread", 0.3)
+		* FloatParam("isletMinRadius", 0.1)
+		* FloatParam("isletMaxRadius", 0.3)
+		* IntParam("isletMinPoints", 7)
+		* IntParam("isletMaxPoints", 25)
+
+	]
+
 	(seed=null) ->
 		@seed = "" + (seed || +new Date())
 		@rng = rng = new RC4Rand(@seed)
+		@params = {seed: @seed}
+		for param of IslandGenerator.PARAMS
+			@params[param.name] = param.value
 		@islets = []
 		@layers = []
 
+
 	generateIslet: ->
-		cx = @rng.uniform(width * 0.2, width * 0.8)
-		cy = @rng.uniform(height * 0.2, height * 0.8)
-		maxRadius = Math.min(width, height) * 0.2
-		radius = @rng.uniform(maxRadius * 0.3, maxRadius)
-		nPoints = @rng.uniformInt(7, 25)
-		points = for p from 0 til nPoints
+		minMul = 0.5 - @params.isletSpread
+		maxMul = 0.5 + @params.isletSpread
+		cx = @rng.uniform(width * minMul, width * maxMul)
+		cy = @rng.uniform(height * minMul, height * maxMul)
+		minRadius = Math.min(width, height) * @params.isletMinRadius
+		maxRadius = Math.min(width, height) * @params.isletMaxRadius
+		radius = @rng.uniform(minRadius, maxRadius)
+		nPoints = @rng.uniformInt(@params.isletMinPoints, @params.isletMaxPoints)
+		points = []
+
+		for p from 0 til nPoints
 			i = p / nPoints
 			xRadius = @rng.uniform(radius * 0.7, radius)
 			yRadius = @rng.uniform(radius * 0.7, radius)
 			x = cx + Math.cos(i * PI2) * xRadius
 			y = cy + Math.sin(i * PI2) * yRadius
-			[x, y]
+			points.push [x, y]
+
+		return points
 
 
 	generate: ->
-		islets = (@generateIslet() for x from 0 til 15)
+		nIslets = @rng.uniformInt(@params.isletMinN, @params.isletMaxN)
+		@islets = islets = (@generateIslet() for x from 0 til nIslets)
 
 		layers = [merge(islets)]#offset(merge(islets), 5)
 		for layers => &height = 0
@@ -143,7 +169,6 @@ class IslandGenerator
 				openLayers = openLayers.concat(newLayers)
 				layers = layers.concat(newLayers)
 
-		@islets = islets
 		@layers = layers
 
 	draw: ->
@@ -180,9 +205,8 @@ class IslandGenerator
 
 
 main = !->
-	ig = new IslandGenerator("hurf a derp")
+	window.ig = ig = new IslandGenerator("hurf a derp")
 	ig.generate()
 	ig.draw()
-	window.ig = ig
 
 main()

@@ -1,4 +1,4 @@
-var PI2, width, height, RC4Rand, Gradient, poly2clipper, clipper2poly, merge, offset, jitterPoly, IslandGenerator, main;
+var PI2, width, height, RC4Rand, Gradient, poly2clipper, clipper2poly, merge, offset, jitterPoly, IntParam, FloatParam, IslandGenerator, main;
 PI2 = Math.PI * 2;
 width = 700;
 height = 700;
@@ -163,44 +163,78 @@ jitterPoly = function(rng, poly, ix, iy){
   }
   return results$;
 };
+IntParam = function(name, value, min, max){
+  min == null && (min = 0);
+  max == null && (max = 100);
+  return {
+    name: name,
+    value: value,
+    min: min,
+    max: max,
+    type: "int"
+  };
+};
+FloatParam = function(name, value, min, max){
+  min == null && (min = 0);
+  max == null && (max = 1);
+  return {
+    name: name,
+    value: value,
+    min: min,
+    max: max,
+    type: "float"
+  };
+};
 IslandGenerator = (function(){
   IslandGenerator.displayName = 'IslandGenerator';
   var prototype = IslandGenerator.prototype, constructor = IslandGenerator;
+  IslandGenerator.PARAMS = [IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25)];
   function IslandGenerator(seed){
-    var rng;
+    var rng, i$, ref$, len$, param;
     seed == null && (seed = null);
     this.seed = "" + (seed || +new Date());
     this.rng = rng = new RC4Rand(this.seed);
+    this.params = {
+      seed: this.seed
+    };
+    for (i$ = 0, len$ = (ref$ = IslandGenerator.PARAMS).length; i$ < len$; ++i$) {
+      param = ref$[i$];
+      this.params[param.name] = param.value;
+    }
     this.islets = [];
     this.layers = [];
   }
   prototype.generateIslet = function(){
-    var cx, cy, maxRadius, radius, nPoints, points, p, i, xRadius, yRadius, x, y;
-    cx = this.rng.uniform(width * 0.2, width * 0.8);
-    cy = this.rng.uniform(height * 0.2, height * 0.8);
-    maxRadius = Math.min(width, height) * 0.2;
-    radius = this.rng.uniform(maxRadius * 0.3, maxRadius);
-    nPoints = this.rng.uniformInt(7, 25);
-    return points = (function(){
+    var minMul, maxMul, cx, cy, minRadius, maxRadius, radius, nPoints, points, p, i, xRadius, yRadius, x, y;
+    minMul = 0.5 - this.params.isletSpread;
+    maxMul = 0.5 + this.params.isletSpread;
+    cx = this.rng.uniform(width * minMul, width * maxMul);
+    cy = this.rng.uniform(height * minMul, height * maxMul);
+    minRadius = Math.min(width, height) * this.params.isletMinRadius;
+    maxRadius = Math.min(width, height) * this.params.isletMaxRadius;
+    radius = this.rng.uniform(minRadius, maxRadius);
+    nPoints = this.rng.uniformInt(this.params.isletMinPoints, this.params.isletMaxPoints);
+    points = [];
+    for (p = 0; p < nPoints; ++p) {
+      i = p / nPoints;
+      xRadius = this.rng.uniform(radius * 0.7, radius);
+      yRadius = this.rng.uniform(radius * 0.7, radius);
+      x = cx + Math.cos(i * PI2) * xRadius;
+      y = cy + Math.sin(i * PI2) * yRadius;
+      points.push([x, y]);
+    }
+    return points;
+  };
+  prototype.generate = function(){
+    var nIslets, islets, x, layers, i$, x0$, len$, openLayers, maxHeight, layer, heightIncrease, offsetValue, layerJitter, newLayers, res$, j$, x1$, len1$, k$, x2$, len2$;
+    nIslets = this.rng.uniformInt(this.params.isletMinN, this.params.isletMaxN);
+    this.islets = islets = (function(){
       var to$, results$ = [];
-      for (p = 0, to$ = nPoints; p < to$; ++p) {
-        i = p / nPoints;
-        xRadius = this.rng.uniform(radius * 0.7, radius);
-        yRadius = this.rng.uniform(radius * 0.7, radius);
-        x = cx + Math.cos(i * PI2) * xRadius;
-        y = cy + Math.sin(i * PI2) * yRadius;
-        results$.push([x, y]);
+      for (x = 0, to$ = nIslets; x < to$; ++x) {
+        results$.push(this.generateIslet());
       }
       return results$;
     }.call(this));
-  };
-  prototype.generate = function(){
-    var islets, res$, x, layers, i$, x0$, len$, openLayers, maxHeight, layer, heightIncrease, offsetValue, layerJitter, newLayers, res1$, j$, x1$, len1$, k$, x2$, len2$;
-    res$ = [];
-    for (x = 0; x < 15; ++x) {
-      res$.push(this.generateIslet());
-    }
-    islets = res$;
     layers = [merge(islets)];
     for (i$ = 0, len$ = layers.length; i$ < len$; ++i$) {
       x0$ = layers[i$];
@@ -223,12 +257,12 @@ IslandGenerator = (function(){
       layerJitter = this.rng.uniformInt(2, 5);
       newLayers = offset(layer, -offsetValue);
       if (newLayers.length) {
-        res1$ = [];
+        res$ = [];
         for (j$ = 0, len1$ = newLayers.length; j$ < len1$; ++j$) {
           x1$ = newLayers[j$];
-          res1$.push(jitterPoly(this.rng, x1$, layerJitter, layerJitter));
+          res$.push(jitterPoly(this.rng, x1$, layerJitter, layerJitter));
         }
-        newLayers = res1$;
+        newLayers = res$;
         for (k$ = 0, len2$ = newLayers.length; k$ < len2$; ++k$) {
           x2$ = newLayers[k$];
           x2$.height = layer.height + heightIncrease;
@@ -237,7 +271,6 @@ IslandGenerator = (function(){
         layers = layers.concat(newLayers);
       }
     }
-    this.islets = islets;
     return this.layers = layers;
   };
   prototype.draw = function(){
@@ -281,9 +314,8 @@ IslandGenerator = (function(){
 }());
 main = function(){
   var ig;
-  ig = new IslandGenerator("hurf a derp");
+  window.ig = ig = new IslandGenerator("hurf a derp");
   ig.generate();
   ig.draw();
-  window.ig = ig;
 };
 main();
