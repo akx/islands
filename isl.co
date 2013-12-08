@@ -1,8 +1,39 @@
 const PI2 = Math.PI * 2
 const width = 700
 const height = 700
-rand = (a, b) -> (a + Math.random() * (b - a))
-randint = (a, b) -> 0 | (a + Math.random() * (b - a))
+
+class RC4Rand
+	(seed) ->
+		@s = (for x from 0 til 256 => x)
+		@i = @j = 0
+		if seed then @mix(seed)
+	
+	mix: !(seed) ->
+		seed = "#seed"
+		j = 0
+		for i from 0 til @s.length
+			ch = seed.charCodeAt(i % seed.length) & 0xFF
+			j += @s[i] + ch
+			j %= 256
+			@_swap(i, j)
+
+	_swap: !(i, j) -> [@s[j], @s[i]] = [@s[i], @s[j]]
+
+	nextByte: ->
+		@i = (@i + 1) % 256
+		@j = (@j + @s[@i]) % 256
+		@_swap(@i, @j)
+		return @s[(@s[@i] + @s[@j]) % 256]
+
+	nextFloat: !->
+		const BYTES = 7
+		output = 0
+		for i from 0 til BYTES
+			output = output * 256 + @nextByte()
+		return output / (Math.pow(2, BYTES * 8) - 1)
+
+	uniform: (a, b) -> a + @nextFloat() * (b - a)
+	uniformInt: (a, b) -> Math.floor(a + @nextFloat() * (b - a))
 
 class Gradient
 	(@resolution=512) -> @points = []; @bitmap = null
@@ -27,20 +58,6 @@ class Gradient
 		ctx.fillRect(0, 0, canvas.width, canvas.height)
 		return ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-
-generateIslet = ->
-	cx = rand(width * 0.2, width * 0.8)
-	cy = rand(height * 0.2, height * 0.8)
-	maxRadius = Math.min(width, height) * 0.2
-	radius = rand(maxRadius * 0.3, maxRadius)
-	nPoints = randint(7, 25)
-	points = for p from 0 til nPoints
-		i = p / nPoints
-		xRadius = rand(radius * 0.7, radius)
-		yRadius = rand(radius * 0.7, radius)
-		x = cx + Math.cos(i * PI2) * xRadius
-		y = cy + Math.sin(i * PI2) * yRadius
-		[x, y]
 
 poly2clipper = (poly) ->
 	subj_polygon = new ClipperLib.Polygon()
@@ -75,59 +92,97 @@ offset = (poly, delta) ->
 	cleanedPolygons = ClipperLib.Clean(offsetPolygons, 2.5)
 	return (for cleanedPolygons => clipper2poly(&))
 	
-jitterPoly = (poly, ix, iy) -> for [x, y] of poly => [x + rand(-ix, ix), y + rand(-iy, iy)]
-jitterPolys = (polys, ix, iy) -> (for polys => jitterPoly(&, ix, iy))
 
-main = ->
-	svg = SVG(document.body)
-	svg.size(width, height)
-	svg.rect(width, height).fill('#53BEFF')
+jitterPoly = (rng, poly, ix, iy) -> for [x, y] of poly => [x + rng.uniform(-ix, ix), y + rng.uniform(-iy, iy)]
 
-	topoColorMap = new Gradient()
-		&addPoint '#acd0a5', 0
-		&addPoint '#94bf8b', 0.2
-		&addPoint '#bdcc96', 0.5
-		&addPoint '#efebc0', 0.8
-		&addPoint '#cab982', 0.99
-		&addPoint '#cab982', 1.0
+class IslandGenerator
+	(seed=null) ->
+		@seed = "" + (seed || +new Date())
+		@rng = rng = new RC4Rand(@seed)
+		@islets = []
+		@layers = []
 
-	bwColorMap = new Gradient()
-		&addPoint 'black', 0
-		&addPoint 'white', 1
+	generateIslet: ->
+		cx = @rng.uniform(width * 0.2, width * 0.8)
+		cy = @rng.uniform(height * 0.2, height * 0.8)
+		maxRadius = Math.min(width, height) * 0.2
+		radius = @rng.uniform(maxRadius * 0.3, maxRadius)
+		nPoints = @rng.uniformInt(7, 25)
+		points = for p from 0 til nPoints
+			i = p / nPoints
+			xRadius = @rng.uniform(radius * 0.7, radius)
+			yRadius = @rng.uniform(radius * 0.7, radius)
+			x = cx + Math.cos(i * PI2) * xRadius
+			y = cy + Math.sin(i * PI2) * yRadius
+			[x, y]
 
-	colorMap = topoColorMap
 
-	islets = (generateIslet() for x from 0 til 15)
+	generate: ->
+		islets = (@generateIslet() for x from 0 til 15)
 
-	layers = [merge(islets)]#offset(merge(islets), 5)
-	for layers => &height = 0
-	openLayers = [].concat(layers)
-	maxHeight = randint(200, 400)
-	while openLayers.length
-		layer = openLayers.shift()
-		continue if rand(0, 1) < 0.05  # Chance to skip
-		break if layer.height > maxHeight
-		heightIncrease = randint(5, 50)
-		offsetValue = rand(0.9, 1.1) * heightIncrease
-		layerJitter = randint(2, 5)
-		newLayers = offset(layer, -offsetValue)
-		if newLayers.length
-			console.log newLayers
-			newLayers = jitterPolys(newLayers, layerJitter, layerJitter)
-			for newLayers => &height = layer.height + heightIncrease
-			openLayers = openLayers.concat(newLayers)
-			layers = layers.concat(newLayers)
+		layers = [merge(islets)]#offset(merge(islets), 5)
+		for layers => &height = 0
+		openLayers = [].concat(layers)
+		@maxHeight = maxHeight = @rng.uniformInt(200, 400)
 
-	#maxHeight = Math.max.apply(null, (for layers => &height))
+		while openLayers.length
+			layer = openLayers.shift()
+			if @rng.uniform(0, 1) < 0.05 then # Chance to skip
+				console.log "skipping layer"
+				continue 
+			if layer.height > maxHeight
+				console.log "maxheight #{maxHeight} reached"
+				break
+			heightIncrease = @rng.uniformInt(5, 50)
+			offsetValue = @rng.uniform(0.9, 1.1) * heightIncrease
+			layerJitter = @rng.uniformInt(2, 5)
+			newLayers = offset(layer, -offsetValue)
+			if newLayers.length
+				newLayers = (for newLayers => jitterPoly(@rng, &, layerJitter, layerJitter))
+				for newLayers => &height = layer.height + heightIncrease
+				openLayers = openLayers.concat(newLayers)
+				layers = layers.concat(newLayers)
 
-	for layer of layers
-		cOffset = layer.height / maxHeight
-		color = colorMap.getColor(cOffset)
-		outline = (if layer.height == 0 then 'black' else 'rgba(0,0,0,0.2)')
-		poly = svg.polygon(layer).stroke({width: 1, color: outline}).fill(color)
-		poly.node.setAttribute("terr-height", layer.height)
-		poly.node.setAttribute("terr-coff", cOffset)
+		@islets = islets
+		@layers = layers
 
-	for islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
+	draw: ->
+		svg = SVG(document.body)
+		svg.size(width, height)
+		svg.rect(width, height).fill('#53BEFF')
+
+		topoColorMap = new Gradient()
+			&addPoint '#acd0a5', 0
+			&addPoint '#94bf8b', 0.2
+			&addPoint '#bdcc96', 0.5
+			&addPoint '#efebc0', 0.8
+			&addPoint '#cab982', 0.99
+			&addPoint '#cab982', 1.0
+
+		bwColorMap = new Gradient()
+			&addPoint 'black', 0
+			&addPoint 'white', 1
+
+		colorMap = topoColorMap
+
+
+		#maxHeight = Math.max.apply(null, (for layers => &height))
+
+		for layer of @layers
+			cOffset = layer.height / @maxHeight
+			color = colorMap.getColor(cOffset)
+			outline = (if layer.height == 0 then 'black' else 'rgba(0,0,0,0.2)')
+			poly = svg.polygon(layer).stroke({width: 1, color: outline}).fill(color)
+			poly.node.setAttribute("terr-height", layer.height)
+			poly.node.setAttribute("terr-coff", cOffset)
+
+		for @islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
+
+
+main = !->
+	ig = new IslandGenerator("hurf a derp")
+	ig.generate()
+	ig.draw()
+	window.ig = ig
 
 main()
