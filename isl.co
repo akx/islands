@@ -78,11 +78,12 @@ merge = (polys) ->
 	clipper.AddPolygons clip_polygons, ClipperLib.PolyType.ptClip
 	solution_polygons = new ClipperLib.Polygons()
 	clipType = ClipperLib.ClipType.ctUnion
-	fillType = ClipperLib.PolyFillType.pftNonZero
+	fillType = ClipperLib.PolyFillType.pftPositive
 	if not clipper.Execute(clipType, solution_polygons, fillType, fillType) then
 		console.log "No success."
-	result = clipper2poly(solution_polygons.0)
-	return result
+		return []
+	else
+		return (for solution_polygons => clipper2poly(&))
 
 outsetPoly = (poly, delta) ->
 	cpr = new ClipperLib.Clipper()
@@ -99,9 +100,13 @@ offsetPoly = (poly, ix, iy) -> for [x, y] of poly => [x + ix, y + iy]
 IntParam = (name, value, min=0, max=100) -> {name, value, min, max, type: "int"}
 FloatParam = (name, value, min=0, max=1) -> {name, value, min, max, type: "float"}
 BoolParam = (name, value) -> {name, value: !!value, type: "bool"}
+StringParam = (name, value) -> {name, value: "#{value}", type: "string"}
 
 class IslandGenerator
 	@PARAMS = [
+
+		* StringParam("seed", "jk43jkcm")
+		* BoolParam("debug", false)
 		* IntParam("isletMinN", 2)
 		* IntParam("isletMaxN", 15)
 		* FloatParam("isletSpread", 0.3)
@@ -112,20 +117,18 @@ class IslandGenerator
 		* FloatParam("isletJagginess", 0.2)
 		* BoolParam("isletSeparateRadii", true)
 
-		* FloatParam("islandInitialOutset", 0)
+		* IntParam("islandInitialOutset", 0, -15, +15)
 		* IntParam("minHeightIncrease", 5)
 		* IntParam("maxHeightIncrease", 50)
-		* IntParam("minHeightInsetRatio", 0.9, 0, 2)
-		* IntParam("maxHeightInsetRatio", 1.1, 0, 2)
+		* FloatParam("minHeightInsetRatio", 0.9, 0, 2)
+		* FloatParam("maxHeightInsetRatio", 1.1, 0, 2)
 		* IntParam("minLayerJitter", 2)
 		* IntParam("maxLayerJitter", 5)
 		* IntParam("layerOffsetSize", 5)
 	]
 
-	(seed=null) ->
-		@seed = "" + (seed || +new Date())
-		@rng = rng = new RC4Rand(@seed)
-		@params = {seed: @seed}
+	->
+		@params = {}
 		for param of IslandGenerator.PARAMS
 			@params[param.name] = param.value
 		@islets = []
@@ -159,11 +162,17 @@ class IslandGenerator
 
 
 	generate: ->
+		@rng = rng = new RC4Rand(@params.seed)
+
 		nIslets = @rng.uniformInt(@params.isletMinN, @params.isletMaxN)
 		@islets = islets = (@generateIslet() for x from 0 til nIslets)
 
-		layers = outsetPoly(merge(islets), @params.islandInitialOutset)
-		for layers => &height = 0
+		layers = []
+		for isletPoly of merge(islets)
+			for layer of outsetPoly(isletPoly, @params.islandInitialOutset)
+				layer.height = 0
+				layers.push(layer)
+
 		openLayers = [].concat(layers)
 		@maxHeight = maxHeight = @rng.uniformInt(200, 400)
 
@@ -187,13 +196,21 @@ class IslandGenerator
 				for newLayers => &height = layer.height + heightIncrease
 				openLayers = openLayers.concat(newLayers)
 				layers = layers.concat(newLayers)
+			else
+				console.log "no new layers"
 
 		@layers = layers
 
 	draw: ->
-		svg = SVG(document.body)
-		svg.size(width, height)
+		if not svg = @svg then
+			svg = SVG(document.body)
+			svg.size(width, height)
+			@svg = svg
+
+
+		svg.clear()
 		svg.rect(width, height).fill('#53BEFF')
+		
 
 		topoColorMap = new Gradient()
 			&addPoint '#acd0a5', 0
@@ -220,18 +237,34 @@ class IslandGenerator
 			poly.node.setAttribute("terr-height", layer.height)
 			poly.node.setAttribute("terr-coff", cOffset)
 
-		#for @islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
+		if @params.debug
+			for @islets => svg.polygon(&).stroke({width: 1, color: 'red'}).fill('none')
 
-makeUI = !->
+	regenerateAndDraw: ->
+		@generate()
+		@draw()
+
+makeUI = !(ig) ->
+	debouncedGenerate = _.debounce((->ig.regenerateAndDraw()), 50)
+	gui = new dat.GUI()
 	for param of IslandGenerator.PARAMS
-		console.log param
-
+		guiParam = null
+		if param.type == 'int'
+			guiParam = gui.add(ig.params, param.name, param.min, param.max).step(1)
+		else if param.type == 'float'
+			guiParam = gui.add(ig.params, param.name, param.min, param.max)
+		else if param.type == 'bool'
+			guiParam = gui.add(ig.params, param.name)
+		else if param.type == "string"
+			guiParam = gui.add(ig.params, param.name)
+		guiParam.onChange(debouncedGenerate)
+			
+	ig.gui = gui
 
 main = !->
 	window.ig = ig = new IslandGenerator("dkkkhurf a der3")
-	ig.generate()
-	ig.draw()
+	makeUI(ig)
 
-makeUI()
+	ig.regenerateAndDraw()
 
 main()

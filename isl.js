@@ -1,4 +1,4 @@
-var PI2, width, height, RC4Rand, Gradient, poly2clipper, clipper2poly, merge, outsetPoly, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, IslandGenerator, makeUI, main;
+var PI2, width, height, RC4Rand, Gradient, poly2clipper, clipper2poly, merge, outsetPoly, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, IslandGenerator, makeUI, main;
 PI2 = Math.PI * 2;
 width = 700;
 height = 700;
@@ -119,7 +119,7 @@ clipper2poly = function(clipper){
   return results$;
 };
 merge = function(polys){
-  var subj_polygons, clip_polygons, clipper, solution_polygons, clipType, fillType, result;
+  var subj_polygons, clip_polygons, clipper, solution_polygons, clipType, fillType;
   polys = [].concat(polys);
   subj_polygons = new ClipperLib.Polygons();
   subj_polygons.push(poly2clipper(polys.shift()));
@@ -132,12 +132,20 @@ merge = function(polys){
   clipper.AddPolygons(clip_polygons, ClipperLib.PolyType.ptClip);
   solution_polygons = new ClipperLib.Polygons();
   clipType = ClipperLib.ClipType.ctUnion;
-  fillType = ClipperLib.PolyFillType.pftNonZero;
+  fillType = ClipperLib.PolyFillType.pftPositive;
   if (!clipper.Execute(clipType, solution_polygons, fillType, fillType)) {
     console.log("No success.");
+    return [];
+  } else {
+    return (function(){
+      var i$, x0$, ref$, len$, results$ = [];
+      for (i$ = 0, len$ = (ref$ = solution_polygons).length; i$ < len$; ++i$) {
+        x0$ = ref$[i$];
+        results$.push(clipper2poly(x0$));
+      }
+      return results$;
+    }());
   }
-  result = clipper2poly(solution_polygons[0]);
-  return result;
 };
 outsetPoly = function(poly, delta){
   var cpr, joinType, miterLimit, offsetPolygons, cleanedPolygons;
@@ -200,18 +208,20 @@ BoolParam = function(name, value){
     type: "bool"
   };
 };
+StringParam = function(name, value){
+  return {
+    name: name,
+    value: value + "",
+    type: "string"
+  };
+};
 IslandGenerator = (function(){
   IslandGenerator.displayName = 'IslandGenerator';
   var prototype = IslandGenerator.prototype, constructor = IslandGenerator;
-  IslandGenerator.PARAMS = [IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25), FloatParam("isletJagginess", 0.2), BoolParam("isletSeparateRadii", true), FloatParam("islandInitialOutset", 0), IntParam("minHeightIncrease", 5), IntParam("maxHeightIncrease", 50), IntParam("minHeightInsetRatio", 0.9, 0, 2), IntParam("maxHeightInsetRatio", 1.1, 0, 2), IntParam("minLayerJitter", 2), IntParam("maxLayerJitter", 5), IntParam("layerOffsetSize", 5)];
-  function IslandGenerator(seed){
-    var rng, i$, ref$, len$, param;
-    seed == null && (seed = null);
-    this.seed = "" + (seed || +new Date());
-    this.rng = rng = new RC4Rand(this.seed);
-    this.params = {
-      seed: this.seed
-    };
+  IslandGenerator.PARAMS = [StringParam("seed", "jk43jkcm"), BoolParam("debug", false), IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25), FloatParam("isletJagginess", 0.2), BoolParam("isletSeparateRadii", true), IntParam("islandInitialOutset", 0, -15, +15), IntParam("minHeightIncrease", 5), IntParam("maxHeightIncrease", 50), FloatParam("minHeightInsetRatio", 0.9, 0, 2), FloatParam("maxHeightInsetRatio", 1.1, 0, 2), IntParam("minLayerJitter", 2), IntParam("maxLayerJitter", 5), IntParam("layerOffsetSize", 5)];
+  function IslandGenerator(){
+    var i$, ref$, len$, param;
+    this.params = {};
     for (i$ = 0, len$ = (ref$ = IslandGenerator.PARAMS).length; i$ < len$; ++i$) {
       param = ref$[i$];
       this.params[param.name] = param.value;
@@ -243,7 +253,8 @@ IslandGenerator = (function(){
     return points;
   };
   prototype.generate = function(){
-    var nIslets, islets, x, layers, i$, x0$, len$, openLayers, maxHeight, layer, heightIncrease, offsetValue, layerJitter, layerXOffset, layerYOffset, newLayers, res$, j$, x1$, len1$, k$, x2$, len2$;
+    var rng, nIslets, islets, x, layers, i$, ref$, len$, isletPoly, j$, ref1$, len1$, layer, openLayers, maxHeight, heightIncrease, offsetValue, layerJitter, layerXOffset, layerYOffset, newLayers, res$, k$, x0$, len2$, l$, x1$, len3$;
+    this.rng = rng = new RC4Rand(this.params.seed);
     nIslets = this.rng.uniformInt(this.params.isletMinN, this.params.isletMaxN);
     this.islets = islets = (function(){
       var to$, results$ = [];
@@ -252,10 +263,14 @@ IslandGenerator = (function(){
       }
       return results$;
     }.call(this));
-    layers = outsetPoly(merge(islets), this.params.islandInitialOutset);
-    for (i$ = 0, len$ = layers.length; i$ < len$; ++i$) {
-      x0$ = layers[i$];
-      x0$.height = 0;
+    layers = [];
+    for (i$ = 0, len$ = (ref$ = merge(islets)).length; i$ < len$; ++i$) {
+      isletPoly = ref$[i$];
+      for (j$ = 0, len1$ = (ref1$ = outsetPoly(isletPoly, this.params.islandInitialOutset)).length; j$ < len1$; ++j$) {
+        layer = ref1$[j$];
+        layer.height = 0;
+        layers.push(layer);
+      }
     }
     openLayers = [].concat(layers);
     this.maxHeight = maxHeight = this.rng.uniformInt(200, 400);
@@ -277,25 +292,31 @@ IslandGenerator = (function(){
       newLayers = outsetPoly(layer, -offsetValue);
       if (newLayers.length) {
         res$ = [];
-        for (j$ = 0, len1$ = newLayers.length; j$ < len1$; ++j$) {
-          x1$ = newLayers[j$];
-          res$.push(offsetPoly(jitterPoly(this.rng, x1$, layerJitter, layerJitter), layerXOffset, layerYOffset));
+        for (k$ = 0, len2$ = newLayers.length; k$ < len2$; ++k$) {
+          x0$ = newLayers[k$];
+          res$.push(offsetPoly(jitterPoly(this.rng, x0$, layerJitter, layerJitter), layerXOffset, layerYOffset));
         }
         newLayers = res$;
-        for (k$ = 0, len2$ = newLayers.length; k$ < len2$; ++k$) {
-          x2$ = newLayers[k$];
-          x2$.height = layer.height + heightIncrease;
+        for (l$ = 0, len3$ = newLayers.length; l$ < len3$; ++l$) {
+          x1$ = newLayers[l$];
+          x1$.height = layer.height + heightIncrease;
         }
         openLayers = openLayers.concat(newLayers);
         layers = layers.concat(newLayers);
+      } else {
+        console.log("no new layers");
       }
     }
     return this.layers = layers;
   };
   prototype.draw = function(){
-    var svg, x0$, topoColorMap, x1$, bwColorMap, colorMap, i$, ref$, len$, layer, cOffset, color, outline, poly, results$ = [];
-    svg = SVG(document.body);
-    svg.size(width, height);
+    var svg, x0$, topoColorMap, x1$, bwColorMap, colorMap, i$, ref$, len$, layer, cOffset, color, outline, poly, j$, x2$, ref1$, len1$, results$ = [];
+    if (!(svg = this.svg)) {
+      svg = SVG(document.body);
+      svg.size(width, height);
+      this.svg = svg;
+    }
+    svg.clear();
     svg.rect(width, height).fill('#53BEFF');
     x0$ = topoColorMap = new Gradient();
     x0$.addPoint('#acd0a5', 0);
@@ -318,24 +339,51 @@ IslandGenerator = (function(){
         color: outline
       }).fill(color);
       poly.node.setAttribute("terr-height", layer.height);
-      results$.push(poly.node.setAttribute("terr-coff", cOffset));
+      poly.node.setAttribute("terr-coff", cOffset);
     }
-    return results$;
+    if (this.params.debug) {
+      for (j$ = 0, len1$ = (ref1$ = this.islets).length; j$ < len1$; ++j$) {
+        x2$ = ref1$[j$];
+        results$.push(svg.polygon(x2$).stroke({
+          width: 1,
+          color: 'red'
+        }).fill('none'));
+      }
+      return results$;
+    }
+  };
+  prototype.regenerateAndDraw = function(){
+    this.generate();
+    return this.draw();
   };
   return IslandGenerator;
 }());
-makeUI = function(){
-  var i$, ref$, len$, param;
+makeUI = function(ig){
+  var debouncedGenerate, gui, i$, ref$, len$, param, guiParam;
+  debouncedGenerate = _.debounce(function(){
+    return ig.regenerateAndDraw();
+  }, 50);
+  gui = new dat.GUI();
   for (i$ = 0, len$ = (ref$ = IslandGenerator.PARAMS).length; i$ < len$; ++i$) {
     param = ref$[i$];
-    console.log(param);
+    guiParam = null;
+    if (param.type == 'int') {
+      guiParam = gui.add(ig.params, param.name, param.min, param.max).step(1);
+    } else if (param.type == 'float') {
+      guiParam = gui.add(ig.params, param.name, param.min, param.max);
+    } else if (param.type == 'bool') {
+      guiParam = gui.add(ig.params, param.name);
+    } else if (param.type == "string") {
+      guiParam = gui.add(ig.params, param.name);
+    }
+    guiParam.onChange(debouncedGenerate);
   }
+  ig.gui = gui;
 };
 main = function(){
   var ig;
   window.ig = ig = new IslandGenerator("dkkkhurf a der3");
-  ig.generate();
-  ig.draw();
+  makeUI(ig);
+  ig.regenerateAndDraw();
 };
-makeUI();
 main();
