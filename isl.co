@@ -1,0 +1,127 @@
+const PI2 = Math.PI * 2
+const width = 700
+const height = 700
+rand = (a, b) -> (a + Math.random() * (b - a))
+randint = (a, b) -> 0 | (a + Math.random() * (b - a))
+
+class Gradient
+	(@resolution=512) -> @points = []; @bitmap = null
+	addPoint: !(color, point) -> @points.push {color, point}
+	getColor: !(point) ->
+		if not @bitmap then @bitmap = @render() 
+		point = 0 >? point <? 1
+		offset = (0 | point * @bitmap.width) * 4
+		data = @bitmap.data
+		return "rgb(#{data[offset]}, #{data[offset+1]}, #{data[offset+2]})"
+
+	render: !->
+		canvas = document.createElement("canvas")
+		canvas.width = @resolution
+		canvas.height = 10
+		console.log @points
+		ctx = canvas.getContext("2d")
+		gradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
+		for {color, point} of @points
+			gradient.addColorStop(point, color)
+		ctx.fillStyle = gradient
+		ctx.fillRect(0, 0, canvas.width, canvas.height)
+		return ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+
+generateIslet = ->
+	cx = rand(width * 0.2, width * 0.8)
+	cy = rand(height * 0.2, height * 0.8)
+	maxRadius = Math.min(width, height) * 0.2
+	radius = rand(maxRadius * 0.3, maxRadius)
+	nPoints = randint(7, 25)
+	points = for p from 0 til nPoints
+		i = p / nPoints
+		xRadius = rand(radius * 0.7, radius)
+		yRadius = rand(radius * 0.7, radius)
+		x = cx + Math.cos(i * PI2) * xRadius
+		y = cy + Math.sin(i * PI2) * yRadius
+		[x, y]
+
+poly2clipper = (poly) ->
+	subj_polygon = new ClipperLib.Polygon()
+	for [x, y] of poly
+		subj_polygon.push new ClipperLib.IntPoint(x, y)
+	return subj_polygon
+
+clipper2poly = (clipper) -> for (clipper || []) => [&X, &Y]
+
+merge = (polys) ->
+	polys = [].concat(polys)
+	subj_polygons = new ClipperLib.Polygons()
+	subj_polygons.push poly2clipper(polys.shift())
+	clip_polygons = new ClipperLib.Polygons()
+	while polys.length => clip_polygons.push poly2clipper(polys.shift())
+	clipper = new ClipperLib.Clipper()
+	clipper.AddPolygons subj_polygons, ClipperLib.PolyType.ptSubject
+	clipper.AddPolygons clip_polygons, ClipperLib.PolyType.ptClip
+	solution_polygons = new ClipperLib.Polygons()
+	clipType = ClipperLib.ClipType.ctUnion
+	fillType = ClipperLib.PolyFillType.pftNonZero
+	if not clipper.Execute(clipType, solution_polygons, fillType, fillType) then
+		console.log "No success."
+	result = clipper2poly(solution_polygons.0)
+	return result
+
+offset = (poly, delta) ->
+	cpr = new ClipperLib.Clipper()
+	joinType = ClipperLib.JoinType.jtMiter
+	miterLimit = 0
+	offsetPolygons = cpr.OffsetPolygons([poly2clipper(poly)], delta, joinType, miterLimit, true)
+	cleanedPolygons = ClipperLib.Clean(offsetPolygons, 2.5)
+	return clipper2poly(cleanedPolygons.0)
+	
+jitter = (poly, ix, iy) -> for [x, y] of poly => [x + rand(-ix, ix), y + rand(-iy, iy)]
+
+
+
+
+main = ->
+	svg = SVG(document.body)
+	svg.size(width, height)
+	svg.rect(width, height).fill('#53BEFF')
+
+	topoColorMap = new Gradient()
+		&addPoint '#acd0a5', 0
+		&addPoint '#94bf8b', 0.2
+		&addPoint '#bdcc96', 0.5
+		&addPoint '#efebc0', 0.8
+		&addPoint '#cab982', 0.99
+		&addPoint '#cab982', 1.0
+
+	bwColorMap = new Gradient()
+		&addPoint 'black', 0
+		&addPoint 'white', 1
+
+	colorMap = topoColorMap
+
+	islets = (generateIslet() for x from 0 til 15)
+
+	outline = offset(merge(islets), 10)
+	outline.height = 0
+	heightLines = [outline]
+
+	for x from 0 til 7
+		n = -randint(10, 30)
+		lastHeightLine = heightLines[heightLines.length - 1]
+		nextHeightLine = offset(lastHeightLine, n)
+		break if not nextHeightLine.length
+		nextHeightLine = jitter(nextHeightLine, 3, 3)
+		nextHeightLine.height = lastHeightLine.height + Math.abs(n)
+		heightLines.push nextHeightLine
+
+	maxHeight = heightLines[heightLines.length - 1].height
+
+	for heightLine, i of heightLines
+		cOffset = heightLine.height / maxHeight
+		console.log cOffset
+		color = colorMap.getColor(cOffset)
+		svg.polygon(heightLine).stroke({width: 1, color: if i == 0 then 'black' else 'silver'}).fill(color)
+
+	#for islets => svg.polygon(&).stroke({width: 1}).fill('none')
+
+main()
