@@ -284,7 +284,7 @@ ParamCollection = (function(){
 IslandGenerator = (function(){
   IslandGenerator.displayName = 'IslandGenerator';
   var x0$, prototype = IslandGenerator.prototype, constructor = IslandGenerator;
-  IslandGenerator.PARAMS = (x0$ = new ParamCollection(), x0$.group(null, [StringParam("seed", "" + (+new Date())), BoolParam("debug", false)]), x0$.group("Islets", [IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25), FloatParam("isletJagginess", 0.2), BoolParam("isletSeparateRadii", true), FloatParam("isletMinAspect", 0.9, 0, 2), FloatParam("isletMaxAspect", 1.1, 0, 2), FloatParam("isletMinAngle", -0.3, -1, 1), FloatParam("isletMaxAngle", +0.3, -1, 1), FloatParam("isletNegativeChance", 0.05)]), x0$.group("Layers", [IntParam("islandInitialOutset", 0, -15, +15), IntParam("minHeightIncrease", 5), IntParam("maxHeightIncrease", 50), FloatParam("minHeightInsetRatio", 0.9, 0, 2), FloatParam("maxHeightInsetRatio", 1.1, 0, 2), IntParam("minLayerJitter", 2), IntParam("maxLayerJitter", 5), IntParam("layerOffsetSize", 5)]), x0$);
+  IslandGenerator.PARAMS = (x0$ = new ParamCollection(), x0$.group(null, [StringParam("seed", "" + (+new Date()))]), x0$.group("Drawing", [BoolParam("isletOutlines", false), BoolParam("contourOutlines", true), BoolParam("bwColorMap", false), IntParam("blurContours", 0, 0, 20)]), x0$.group("Islets", [IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25), FloatParam("isletJagginess", 0.2), BoolParam("isletSeparateRadii", true), FloatParam("isletMinAspect", 0.9, 0, 2), FloatParam("isletMaxAspect", 1.1, 0, 2), FloatParam("isletMinAngle", -0.3, -1, 1), FloatParam("isletMaxAngle", +0.3, -1, 1), FloatParam("isletNegativeChance", 0.05)]), x0$.group("Layers", [IntParam("islandInitialOutset", 0, -15, +15), IntParam("minHeightIncrease", 5), IntParam("maxHeightIncrease", 50), FloatParam("minHeightInsetRatio", 0.9, 0, 2), FloatParam("maxHeightInsetRatio", 1.1, 0, 2), IntParam("minLayerJitter", 2), IntParam("maxLayerJitter", 5), IntParam("layerOffsetSize", 5)]), x0$);
   function IslandGenerator(){
     this.params = IslandGenerator.PARAMS.initialize();
     this.islets = [];
@@ -390,38 +390,45 @@ IslandGenerator = (function(){
     return this.genTime = (+new Date()) - time;
   };
   prototype.draw = function(){
-    var svg, x1$, topoColorMap, x2$, bwColorMap, colorMap, i$, ref$, len$, layer, cOffset, color, outline, poly, j$, x3$, ref1$, len1$, results$ = [];
+    var svg, x1$, colorMap, x2$, i$, ref$, len$, layer, cOffset, color, outline, poly, blur, j$, x3$, ref1$, len1$, results$ = [];
     if (!(svg = this.svg)) {
       svg = SVG(document.body);
       svg.size(width, height);
       this.svg = svg;
     }
     svg.clear();
-    svg.rect(width, height).fill('#53BEFF');
-    x1$ = topoColorMap = new Gradient();
-    x1$.addPoint('#94bf8b', 0);
-    x1$.addPoint('#acd0a5', 0.2);
-    x1$.addPoint('#bdcc96', 0.5);
-    x1$.addPoint('#efebc0', 0.8);
-    x1$.addPoint('#cab982', 0.99);
-    x1$.addPoint('#cab982', 1.0);
-    x2$ = bwColorMap = new Gradient();
-    x2$.addPoint('black', 0);
-    x2$.addPoint('white', 1);
-    colorMap = topoColorMap;
+    if (this.params.bwColorMap) {
+      svg.rect(width, height).fill('#000000');
+      x1$ = colorMap = new Gradient();
+      x1$.addPoint('#222222', 0);
+      x1$.addPoint('#ffffff', 1);
+    } else {
+      svg.rect(width, height).fill('#53BEFF');
+      x2$ = colorMap = new Gradient();
+      x2$.addPoint('#94bf8b', 0);
+      x2$.addPoint('#acd0a5', 0.2);
+      x2$.addPoint('#bdcc96', 0.5);
+      x2$.addPoint('#efebc0', 0.8);
+      x2$.addPoint('#cab982', 0.99);
+      x2$.addPoint('#cab982', 1.0);
+    }
     for (i$ = 0, len$ = (ref$ = this.layers).length; i$ < len$; ++i$) {
       layer = ref$[i$];
       cOffset = layer.height / this.maxHeight;
       color = colorMap.getColor(cOffset);
       outline = layer.height == 0 ? 'black' : 'rgba(0,0,0,0.2)';
-      poly = svg.polygon(layer).stroke({
-        width: 1,
-        color: outline
-      }).fill(color);
-      poly.node.setAttribute("terr-height", layer.height);
-      poly.node.setAttribute("terr-coff", cOffset);
+      poly = svg.polygon(layer).fill(color);
+      if (this.params.contourOutlines) {
+        poly.stroke({
+          width: 1,
+          color: outline
+        });
+      }
+      if (blur = this.params.blurContours) {
+        poly.filter(fn$);
+      }
     }
-    if (this.params.debug) {
+    if (this.params.isletOutlines) {
       for (j$ = 0, len1$ = (ref1$ = this.islets).length; j$ < len1$; ++j$) {
         x3$ = ref1$[j$];
         results$.push(svg.polygon(x3$).stroke({
@@ -430,6 +437,9 @@ IslandGenerator = (function(){
         }).fill('none'));
       }
       return results$;
+    }
+    function fn$(it){
+      return it.gaussianBlur(blur);
     }
   };
   prototype.regenerateAndDraw = function(){

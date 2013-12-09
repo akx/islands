@@ -140,7 +140,12 @@ class IslandGenerator
 		new ParamCollection()
 			&group(null, [
 				* StringParam("seed", "" + (+new Date()))
-				* BoolParam("debug", false)
+			])
+			&group("Drawing", [
+				* BoolParam("isletOutlines", false)
+				* BoolParam("contourOutlines", true)
+				* BoolParam("bwColorMap", false)
+				* IntParam("blurContours", 0, 0, 20)
 			])
 			&group("Islets", [
 				* IntParam("isletMinN", 2)
@@ -275,23 +280,22 @@ class IslandGenerator
 
 
 		svg.clear()
-		svg.rect(width, height).fill('#53BEFF')
 		
-
-		topoColorMap = new Gradient()
-			&addPoint '#94bf8b', 0
-			&addPoint '#acd0a5', 0.2
-			&addPoint '#bdcc96', 0.5
-			&addPoint '#efebc0', 0.8
-			&addPoint '#cab982', 0.99
-			&addPoint '#cab982', 1.0
-
-		bwColorMap = new Gradient()
-			&addPoint 'black', 0
-			&addPoint 'white', 1
-
-		colorMap = topoColorMap
-
+		
+		if @params.bwColorMap then
+			svg.rect(width, height).fill('#000000')
+			colorMap = new Gradient()
+				&addPoint '#222222', 0
+				&addPoint '#ffffff', 1
+		else
+			svg.rect(width, height).fill('#53BEFF')
+			colorMap = new Gradient()
+				&addPoint '#94bf8b', 0
+				&addPoint '#acd0a5', 0.2
+				&addPoint '#bdcc96', 0.5
+				&addPoint '#efebc0', 0.8
+				&addPoint '#cab982', 0.99
+				&addPoint '#cab982', 1.0
 
 		#maxHeight = Math.max.apply(null, (for layers => &height))
 
@@ -299,11 +303,15 @@ class IslandGenerator
 			cOffset = layer.height / @maxHeight
 			color = colorMap.getColor(cOffset)
 			outline = (if layer.height == 0 then 'black' else 'rgba(0,0,0,0.2)')
-			poly = svg.polygon(layer).stroke({width: 1, color: outline}).fill(color)
-			poly.node.setAttribute("terr-height", layer.height)
-			poly.node.setAttribute("terr-coff", cOffset)
+			poly = svg.polygon(layer).fill(color)
+			if @params.contourOutlines
+				poly.stroke({width: 1, color: outline})
+			if (blur=@params.blurContours)
+				poly.filter -> it.gaussianBlur blur
+			#poly.node.setAttribute("terr-height", layer.height)
+			#poly.node.setAttribute("terr-coff", cOffset)
 
-		if @params.debug
+		if @params.isletOutlines
 			for @islets => svg.polygon(&).stroke({width: 1, color: if &negative then 'red' else 'white'}).fill('none')
 
 	regenerateAndDraw: ->
