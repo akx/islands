@@ -1,0 +1,98 @@
+TerrainGeometry = ( width, height, widthSegments, heightSegments, data, scale=1 ) ->
+	THREE.Geometry.call( this )
+	@width = width
+	@height = height
+	@widthSegments = widthSegments || 1
+	@heightSegments = heightSegments || 1
+	width_half = width / 2
+	height_half = height / 2
+
+	gridX = this.widthSegments
+	gridZ = this.heightSegments
+
+	gridX1 = gridX + 1
+	gridZ1 = gridZ + 1
+
+	segment_width = this.width / gridX
+	segment_height = this.height / gridZ
+
+	normal = new THREE.Vector3( 0, 1, 0 )
+
+	for iz from 0 til gridZ1
+		for ix from 0 til gridX1		
+			x = ix * segment_width - width_half;
+			y = iz * segment_height - height_half;
+			if 0 <= ix < gridX and 0 <= iz < gridZ then
+				z = data[iz * widthSegments + ix] * scale
+			else
+				z = 0
+			@vertices.push( new THREE.Vector3( x, z, y ) )
+
+	for iz from 0 til gridZ
+		for ix from 0 til gridX		
+			z = data[iz * widthSegments + ix]
+			continue if z <= 0
+
+			a = ix + gridX1 * iz
+			b = ix + gridX1 * ( iz + 1 )
+			c = ( ix + 1 ) + gridX1 * ( iz + 1 )
+			d = ( ix + 1 ) + gridX1 * iz
+
+			uva = new THREE.Vector2( ix / gridX, 1 - iz / gridZ )
+			uvb = new THREE.Vector2( ix / gridX, 1 - ( iz + 1 ) / gridZ )
+			uvc = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - ( iz + 1 ) / gridZ )
+			uvd = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - iz / gridZ )
+
+			face = new THREE.Face3( a, b, d )
+			face.normal.copy( normal );
+			face.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );
+
+			this.faces.push( face );
+			this.faceVertexUvs[ 0 ].push( [ uva, uvb, uvd ] );
+
+			face = new THREE.Face3( b, c, d );
+			face.normal.copy( normal );
+			face.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );
+
+			this.faces.push( face );
+			this.faceVertexUvs[ 0 ].push( [ uvb.clone(), uvc, uvd.clone() ] );
+
+	console.log @
+	@computeCentroids()
+
+TerrainGeometry.prototype = Object.create( THREE.Geometry.prototype );
+
+class HeightmapThreeJS
+	(@heightmap) ->
+		WIDTH = 640
+		HEIGHT = 480
+		VIEW_ANGLE = 60
+		ASPECT = WIDTH / HEIGHT
+		@renderer = new THREE.WebGLRenderer()
+			&setSize(WIDTH, HEIGHT)
+			document.body.appendChild(&domElement)
+		@camera = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 0.1, 1000)
+		geometry = new THREE.Geometry()
+		material = new THREE.MeshLambertMaterial({color: 0xFFCC00})
+		@plane = new THREE.Mesh(geometry, material)
+
+		@pointLight = new THREE.PointLight(0xFFFFFF);
+
+		@scene = new THREE.Scene()
+			&add(@camera)
+			&add(@plane)
+			&add(@pointLight)
+
+	updateMesh: !->
+		@plane.geometry = new TerrainGeometry(50, 50, @heightmap.mapWidth, @heightmap.mapHeight, @heightmap.heightmapData, 0.1)
+		@plane.geometry.verticesNeedUpdate = true
+
+	
+	render: !->
+		ang = +new Date() * -0.0005
+		c = Math.cos(ang) * 50
+		s = Math.sin(ang) * 50
+		p = @camera.position = new THREE.Vector3(c, 50, s)
+		@camera.lookAt(new THREE.Vector3(0, 0, 0))
+		@pointLight.position <<< {x: p.x - 10, y: p.y, z: p.z - 10}
+		@renderer.render(@scene, @camera)

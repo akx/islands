@@ -1,7 +1,5 @@
-var PI2, width, height, RC4Rand, RandomFarm, Gradient, poly2clipper, clipper2poly, poly_op, merge, cut, outsetPoly, makeRotator, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, ParamGroup, ParamCollection, IslandGenerator, makeUI, main;
+var PI2, RC4Rand, RandomFarm, Gradient, lerp, getDistance, getSquaredDistance, distToSegmentSquared, distToSegment, closestPointOnSegment, poly2clipper, clipper2poly, poly_op, merge, cut, outsetPoly, makeRotator, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, ParamGroup, ParamCollection, HeightmapGenerator, IslandGenerator, makeUI, main;
 PI2 = Math.PI * 2;
-width = 700;
-height = 700;
 RC4Rand = (function(){
   RC4Rand.displayName = 'RC4Rand';
   var prototype = RC4Rand.prototype, constructor = RC4Rand;
@@ -116,6 +114,54 @@ Gradient = (function(){
   };
   return Gradient;
 }());
+lerp = function(a, b, alpha){
+  return b * alpha + a * (1 - alpha);
+};
+getDistance = function(x1, y1, x2, y2){
+  var dx2, dy2;
+  dx2 = (x2 - x1) * (x2 - x1);
+  dy2 = (y2 - y1) * (y2 - y1);
+  return Math.sqrt(dx2 + dy2);
+};
+getSquaredDistance = function(x1, y1, x2, y2){
+  var dx2, dy2;
+  dx2 = (x2 - x1) * (x2 - x1);
+  dy2 = (y2 - y1) * (y2 - y1);
+  return dx2 + dy2;
+};
+distToSegmentSquared = function(p, v, w){
+  var l2, t;
+  l2 = getSquaredDistance(v[0], v[1], w[0], w[1]);
+  if (l2 <= 0) {
+    return getSquaredDistance(p[0], p[1], v[0], v[1]);
+  }
+  t = ((p[0] - v[0]) * (w[0] - v[0]) + (p[1] - v[1]) * (w[1] - v[1])) / l2;
+  if (t <= 0) {
+    return getSquaredDistance(p[0], p[1], v[0], v[1]);
+  }
+  if (t >= 1) {
+    return getSquaredDistance(p[0], p[1], w[0], w[1]);
+  }
+  return getSquaredDistance(p[0], p[1], v[0] + t * (w[0] - v[0]), v[1] + t * (w[1] - v[1]));
+};
+distToSegment = function(p, v, w){
+  return Math.sqrt(distToSegmentSquared(p, v, w));
+};
+closestPointOnSegment = function(p, v, w){
+  var l2, t;
+  l2 = getSquaredDistance(v[0], v[1], w[0], w[1]);
+  if (l2 <= 0) {
+    return p;
+  }
+  t = ((p[0] - v[0]) * (w[0] - v[0]) + (p[1] - v[1]) * (w[1] - v[1])) / l2;
+  if (t <= 0) {
+    return v;
+  }
+  if (t >= 1) {
+    return w;
+  }
+  return [v[0] + t * (w[0] - v[0]), v[1] + t * (w[1] - v[1])];
+};
 poly2clipper = function(poly){
   var subj_polygon, i$, len$, ref$, x, y;
   subj_polygon = new ClipperLib.Polygon();
@@ -281,22 +327,220 @@ ParamCollection = (function(){
   };
   return ParamCollection;
 }());
+HeightmapGenerator = (function(){
+  HeightmapGenerator.displayName = 'HeightmapGenerator';
+  var prototype = HeightmapGenerator.prototype, constructor = HeightmapGenerator;
+  function HeightmapGenerator(ig, mapWidth, mapHeight){
+    var i$, x0$, ref$, len$, x1$, x2$;
+    this.ig = ig;
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
+    this.scaleX = this.mapWidth / this.ig.width;
+    this.scaleY = this.mapHeight / this.ig.height;
+    for (i$ = 0, len$ = (ref$ = document.querySelectorAll("canvas")).length; i$ < len$; ++i$) {
+      x0$ = ref$[i$];
+      x0$.parentNode.removeChild(x0$);
+    }
+    x1$ = this.debugCanvas = document.createElement("canvas");
+    x1$.width = this.mapWidth;
+    x1$.height = this.mapHeight;
+    this.debugCtx = x1$.getContext("2d");
+    x1$.style.border = "1px solid red";
+    document.body.appendChild(x1$);
+    x2$ = this.scratchCanvas = document.createElement("canvas");
+    x2$.width = this.mapWidth;
+    x2$.height = this.mapHeight;
+    this.scratchCtx = x2$.getContext("2d");
+    x2$.style.border = "1px solid black";
+    this.heightmapData = new Float32Array(mapWidth * mapHeight);
+    this.segments = this._generateSegments();
+    console.log(this.segments.length + " segments.");
+  }
+  prototype._generateSegments = function(){
+    var segments, i$, ref$, len$, layer, height, a, to$, b, pa, pb, ref1$;
+    segments = [];
+    for (i$ = 0, len$ = (ref$ = this.ig.layers).length; i$ < len$; ++i$) {
+      layer = ref$[i$];
+      height = layer.height;
+      for (a = 0, to$ = layer.length; a < to$; ++a) {
+        b = (a + 1) % layer.length;
+        pa = [layer[a][0] * this.scaleX, layer[a][1] * this.scaleY];
+        pb = [layer[b][0] * this.scaleX, layer[b][1] * this.scaleY];
+        segments.push((ref1$ = [pa, pb], ref1$.height = height, ref1$));
+      }
+    }
+    return segments;
+  };
+  prototype._updateDebugCanvas = function(){
+    var max, i$, x0$, ref$, len$, x1$, data, i, ref1$, len1$, height, color;
+    max = 0;
+    for (i$ = 0, len$ = (ref$ = this.heightmapData).length; i$ < len$; ++i$) {
+      x0$ = ref$[i$];
+      max = max > x0$ ? max : x0$;
+    }
+    x1$ = this.debugCtx;
+    x1$.fillStyle = "purple";
+    x1$.fillRect(0, 0, this.mapWidth, this.mapHeight);
+    data = x1$.getImageData(0, 0, this.mapWidth, this.mapHeight);
+    for (i = 0, len1$ = (ref1$ = this.heightmapData).length; i < len1$; ++i) {
+      height = ref1$[i];
+      if (height > 0) {
+        color = 0 | height / max * 255.0;
+        data.data[i * 4 + 0] = color;
+        data.data[i * 4 + 1] = color;
+        data.data[i * 4 + 2] = color;
+        data.data[i * 4 + 3] = 255;
+      }
+    }
+    this.debugCtx.putImageData(data, 0, 0);
+    this.debugCtx.fillStyle = "white";
+    this.debugCtx.fillText("max = " + (0 | max), 3, this.mapHeight - 3);
+  };
+  prototype._determineBaseRegion = function(){
+    var sc, i$, ref$, len$, layer, i, len1$, ref1$, x, y, data, to$, off;
+    sc = this.scratchCtx;
+    sc.fillStyle = "black";
+    sc.fillRect(0, 0, this.mapWidth, this.mapHeight);
+    sc.fillStyle = 'red';
+    for (i$ = 0, len$ = (ref$ = this.ig.layers).length; i$ < len$; ++i$) {
+      layer = ref$[i$];
+      if (layer.height > 0) {
+        continue;
+      }
+      sc.beginPath();
+      for (i = 0, len1$ = layer.length; i < len1$; ++i) {
+        ref1$ = layer[i], x = ref1$[0], y = ref1$[1];
+        x *= this.scaleX;
+        y *= this.scaleY;
+        if (i == 0) {
+          sc.moveTo(x, y);
+        } else {
+          sc.lineTo(x, y);
+        }
+      }
+      sc.closePath();
+      sc.fill();
+    }
+    data = sc.getImageData(0, 0, this.mapWidth, this.mapHeight);
+    for (i = 0, to$ = this.mapWidth * this.mapHeight; i < to$; ++i) {
+      off = i * 4;
+      if (data.data[off] >= 250) {
+        data.data[off++] = 255;
+      } else {
+        data.data[off++] = 0;
+      }
+      data.data[off++] = 0;
+      data.data[off++] = 0;
+      data.data[off++] = 255;
+    }
+    sc.putImageData(data, 0, 0);
+  };
+  prototype.startGenerate = function(){
+    this._determineBaseRegion();
+    this._updateDebugCanvas();
+    this.y = 0;
+  };
+  prototype.generateNextLine = function(){
+    if (this.y >= this.mapHeight) {
+      return false;
+    }
+    this.generateLine(this.y);
+    this.y++;
+    return true;
+  };
+  prototype.generateLine = function(y){
+    var scratchData, x, to$, red, dataOffset, height;
+    console.log("generating line: " + y);
+    scratchData = this.scratchCtx.getImageData(0, y, this.mapWidth, 1).data;
+    for (x = 0, to$ = this.mapWidth; x < to$; ++x) {
+      red = scratchData[x * 4];
+      if (red == 255) {
+        dataOffset = y * this.mapWidth + x;
+        height = this.generatePoint(x, y);
+        this.heightmapData[dataOffset] = height;
+      }
+    }
+    this._updateDebugCanvas();
+  };
+  prototype._getSegmentDistances = function(x, y){
+    var distances, xy, i$, ref$, len$, segment, a, b, height, closestPt, distanceSqr;
+    distances = [];
+    xy = [x, y];
+    for (i$ = 0, len$ = (ref$ = this.segments).length; i$ < len$; ++i$) {
+      segment = ref$[i$];
+      a = segment[0], b = segment[1];
+      height = segment.height;
+      closestPt = closestPointOnSegment(xy, segment[0], segment[1]);
+      distanceSqr = getSquaredDistance(x, y, closestPt[0], closestPt[1]);
+      distances.push({
+        distance: distanceSqr,
+        pt: closestPt,
+        height: height
+      });
+    }
+    distances = distances.sort(function(a, b){
+      return a.distance - b.distance;
+    });
+    return distances;
+  };
+  prototype.generatePoint = function(x, y){
+    var distances, ds1, closestDs, higherDs, lowerDs, i$, len$, distance, ds2, pt1, pt2, cpd, interpLength, d1, d2, interpAlpha;
+    distances = this._getSegmentDistances(x, y);
+    ds1 = closestDs = distances[0];
+    higherDs = null;
+    lowerDs = null;
+    for (i$ = 0, len$ = distances.length; i$ < len$; ++i$) {
+      distance = distances[i$];
+      if (!lowerDs && distance.height < closestDs.height) {
+        lowerDs = distance;
+      }
+      if (!higherDs && distance.height > closestDs.height) {
+        higherDs = distance;
+      }
+      if (lowerDs && higherDs) {
+        break;
+      }
+    }
+    ds2 = lowerDs || higherDs || ds1;
+    if (lowerDs && higherDs) {
+      if (lowerDs.distance < higherDs.distance) {
+        ds2 = lowerDs;
+      } else {
+        ds2 = higherDs;
+      }
+    }
+    if (!ds2) {
+      return ds1.height;
+    }
+    pt1 = ds1.pt;
+    pt2 = ds2.pt;
+    cpd = closestPointOnSegment([x, y], pt1, pt2);
+    interpLength = getDistance(pt1[0], pt1[1], pt2[0], pt2[1]);
+    x = cpd[0], y = cpd[1];
+    d1 = getDistance(x, y, pt1[0], pt1[1]);
+    d2 = getDistance(x, y, pt2[0], pt2[1]);
+    interpAlpha = d1 / interpLength;
+    return lerp(ds1.height, ds2.height, interpAlpha);
+  };
+  return HeightmapGenerator;
+}());
 IslandGenerator = (function(){
   IslandGenerator.displayName = 'IslandGenerator';
   var x0$, prototype = IslandGenerator.prototype, constructor = IslandGenerator;
-  IslandGenerator.PARAMS = (x0$ = new ParamCollection(), x0$.group(null, [StringParam("seed", "" + (+new Date()))]), x0$.group("Drawing", [BoolParam("isletOutlines", false), BoolParam("contourOutlines", true), BoolParam("bwColorMap", false), IntParam("blurContours", 0, 0, 20)]), x0$.group("Islets", [IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25), FloatParam("isletJagginess", 0.2), BoolParam("isletSeparateRadii", true), FloatParam("isletMinAspect", 0.9, 0, 2), FloatParam("isletMaxAspect", 1.1, 0, 2), FloatParam("isletMinAngle", -0.3, -1, 1), FloatParam("isletMaxAngle", +0.3, -1, 1), FloatParam("isletNegativeChance", 0.05)]), x0$.group("Layers", [IntParam("islandInitialOutset", 0, -15, +15), IntParam("minHeightIncrease", 5), IntParam("maxHeightIncrease", 50), FloatParam("minHeightInsetRatio", 0.9, 0, 2), FloatParam("maxHeightInsetRatio", 1.1, 0, 2), IntParam("minLayerJitter", 2), IntParam("maxLayerJitter", 5), IntParam("layerOffsetSize", 5)]), x0$);
+  IslandGenerator.PARAMS = (x0$ = new ParamCollection(), x0$.group(null, [StringParam("seed", "" + (+new Date())), IntParam("size", 600, 0, 2048)]), x0$.group("Drawing", [BoolParam("isletOutlines", false), BoolParam("contourOutlines", true), BoolParam("bwColorMap", false), IntParam("blurContours", 0, 0, 20)]), x0$.group("Islets", [IntParam("isletMinN", 2), IntParam("isletMaxN", 15), FloatParam("isletSpread", 0.3), FloatParam("isletMinRadius", 0.1), FloatParam("isletMaxRadius", 0.3), IntParam("isletMinPoints", 7), IntParam("isletMaxPoints", 25), FloatParam("isletJagginess", 0.2), BoolParam("isletSeparateRadii", true), FloatParam("isletMinAspect", 0.9, 0, 2), FloatParam("isletMaxAspect", 1.1, 0, 2), FloatParam("isletMinAngle", -0.3, -1, 1), FloatParam("isletMaxAngle", +0.3, -1, 1), FloatParam("isletNegativeChance", 0.05)]), x0$.group("Layers", [IntParam("islandInitialOutset", 0, -15, +15), IntParam("minHeightIncrease", 5), IntParam("maxHeightIncrease", 50), FloatParam("minHeightInsetRatio", 0.9, 0, 2), FloatParam("maxHeightInsetRatio", 1.1, 0, 2), IntParam("minLayerJitter", 2), IntParam("maxLayerJitter", 5), IntParam("layerOffsetSize", 5)]), x0$);
   function IslandGenerator(){
     this.params = IslandGenerator.PARAMS.initialize();
     this.islets = [];
     this.layers = [];
   }
   prototype.generateIslet = function(rng){
-    var minMul, maxMul, cx, cy, maxRadius, minRadius, nPoints, points, aspect, angle, rotate, p, i, xRadius, yRadius, ref$, x, y;
+    var minMul, maxMul, cx, cy, minSize, maxRadius, minRadius, nPoints, points, aspect, angle, rotate, p, i, xRadius, yRadius, ref$, x, y;
     minMul = 0.5 - this.params.isletSpread;
     maxMul = 0.5 + this.params.isletSpread;
-    cx = rng.uniform(width * minMul, width * maxMul);
-    cy = rng.uniform(height * minMul, height * maxMul);
-    maxRadius = rng.uniform(Math.min(width, height) * this.params.isletMinRadius, Math.min(width, height) * this.params.isletMaxRadius);
+    cx = rng.uniform(this.width * minMul, this.width * maxMul);
+    cy = rng.uniform(this.height * minMul, this.height * maxMul);
+    minSize = Math.min(this.width, this.height);
+    maxRadius = rng.uniform(minSize * this.params.isletMinRadius, minSize * this.params.isletMaxRadius);
     minRadius = maxRadius - maxRadius * this.params.isletJagginess;
     nPoints = rng.uniformInt(this.params.isletMinPoints, this.params.isletMaxPoints);
     points = [];
@@ -327,7 +571,9 @@ IslandGenerator = (function(){
     negativeIslets = islets.filter(function(islet){
       return islet.negative;
     });
-    islets = cut(positiveIslets, negativeIslets);
+    if (negativeIslets.length) {
+      islets = cut(positiveIslets, negativeIslets);
+    }
     for (i$ = 0, len$ = (ref$ = merge(islets)).length; i$ < len$; ++i$) {
       isletPoly = ref$[i$];
       for (j$ = 0, len1$ = (ref1$ = outsetPoly(isletPoly, this.params.islandInitialOutset)).length; j$ < len1$; ++j$) {
@@ -374,6 +620,7 @@ IslandGenerator = (function(){
   };
   prototype.generate = function(){
     var time, isletRng, nIslets, islets, x, layerRng;
+    this.width = this.height = 0 | this.params.size;
     time = +new Date();
     this.rngFarm = new RandomFarm(this.params.seed);
     isletRng = this.rngFarm.get("islet");
@@ -392,18 +639,16 @@ IslandGenerator = (function(){
   prototype.draw = function(){
     var svg, x1$, colorMap, x2$, i$, ref$, len$, layer, cOffset, color, outline, poly, blur, j$, x3$, ref1$, len1$, results$ = [];
     if (!(svg = this.svg)) {
-      svg = SVG(document.body);
-      svg.size(width, height);
-      this.svg = svg;
+      this.svg = svg = SVG(document.body);
     }
-    svg.clear();
+    svg.size(this.width, this.height).clear();
     if (this.params.bwColorMap) {
-      svg.rect(width, height).fill('#000000');
+      svg.rect(this.width, this.height).fill('#000000');
       x1$ = colorMap = new Gradient();
       x1$.addPoint('#222222', 0);
       x1$.addPoint('#ffffff', 1);
     } else {
-      svg.rect(width, height).fill('#53BEFF');
+      svg.rect(this.width, this.height).fill('#53BEFF');
       x2$ = colorMap = new Gradient();
       x2$.addPoint('#94bf8b', 0);
       x2$.addPoint('#acd0a5', 0.2);
@@ -480,9 +725,19 @@ makeUI = function(ig){
   ig.gui = gui;
 };
 main = function(){
-  var ig;
+  var ig, hmg, stepGeneration;
   window.ig = ig = new IslandGenerator("dkkkhurf a der3");
   makeUI(ig);
   ig.regenerateAndDraw();
+  hmg = new HeightmapGenerator(ig, 256, 256);
+  hmg.startGenerate();
+  stepGeneration = function(){
+    if (hmg.generateNextLine()) {
+      setTimeout(stepGeneration, 1);
+    } else {
+      0;
+    }
+  };
+  stepGeneration();
 };
 main();
