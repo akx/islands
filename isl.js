@@ -1,4 +1,4 @@
-var PI2, rand, RC4Rand, RandomFarm, Gradient, lerp, getDistance, getSquaredDistance, distToSegmentSquared, distToSegment, closestPointOnSegment, poly2clipper, clipper2poly, poly_op, merge, cut, outsetPoly, makeRotator, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, ParamGroup, ParamCollection, HeightmapGenerator, IslandGenerator, makeUI, main;
+var PI2, rand, RC4Rand, RandomFarm, Gradient, lerp, getDistance, getSquaredDistance, distToSegmentSquared, distToSegment, closestPointOnSegment, poly2clipper, clipper2poly, poly_op, merge, cut, outsetPoly, makeRotator, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, ParamGroup, ParamCollection, HeightmapGenerator, IslandGenerator, makeUI, makeButton, main;
 PI2 = Math.PI * 2;
 rand = function(a, b){
   return a + Math.random() * (b - a);
@@ -334,29 +334,25 @@ HeightmapGenerator = (function(){
   HeightmapGenerator.displayName = 'HeightmapGenerator';
   var prototype = HeightmapGenerator.prototype, constructor = HeightmapGenerator;
   function HeightmapGenerator(ig, mapWidth, mapHeight){
-    var i$, x0$, ref$, len$, x1$, x2$;
+    var x0$, x1$;
     this.ig = ig;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.scaleX = this.mapWidth / this.ig.width;
     this.scaleY = this.mapHeight / this.ig.height;
-    for (i$ = 0, len$ = (ref$ = document.querySelectorAll("canvas")).length; i$ < len$; ++i$) {
-      x0$ = ref$[i$];
-      x0$.parentNode.removeChild(x0$);
-    }
-    x1$ = this.debugCanvas = document.createElement("canvas");
+    x0$ = this.debugCanvas = document.createElement("canvas");
+    x0$.width = this.mapWidth;
+    x0$.height = this.mapHeight;
+    this.debugCtx = x0$.getContext("2d");
+    x0$.style.border = "1px solid red";
+    x0$.style.width = "500px";
+    x0$.style.height = "500px";
+    document.body.appendChild(x0$);
+    x1$ = this.scratchCanvas = document.createElement("canvas");
     x1$.width = this.mapWidth;
     x1$.height = this.mapHeight;
-    this.debugCtx = x1$.getContext("2d");
-    x1$.style.border = "1px solid red";
-    x1$.style.width = "500px";
-    x1$.style.height = "500px";
-    document.body.appendChild(x1$);
-    x2$ = this.scratchCanvas = document.createElement("canvas");
-    x2$.width = this.mapWidth;
-    x2$.height = this.mapHeight;
-    this.scratchCtx = x2$.getContext("2d");
-    x2$.style.border = "1px solid black";
+    this.scratchCtx = x1$.getContext("2d");
+    x1$.style.border = "1px solid black";
     this.heightmapData = new Float32Array(mapWidth * mapHeight);
     this.segments = this._generateSegments();
     console.log(this.segments.length + " segments.");
@@ -717,24 +713,40 @@ makeUI = function(ig){
   }
   ig.gui = gui;
 };
+makeButton = function(text, handler){
+  var x0$, button;
+  x0$ = button = document.createElement("button");
+  x0$.innerHTML = text;
+  x0$.addEventListener("click", handler, false);
+  document.body.appendChild(x0$);
+  return x0$;
+};
 main = function(){
-  var ig, hmg, th, stepGeneration;
+  var ig, generateHeightMap;
   window.ig = ig = new IslandGenerator("dkkkhurf a der3");
   makeUI(ig);
   ig.regenerateAndDraw();
-  hmg = new HeightmapGenerator(ig, 64, 64);
-  hmg.startGenerate();
-  th = new HeightmapThreeJS(hmg);
-  setInterval(function(){
-    return th.render();
-  }, 1000 / 24.0);
-  stepGeneration = function(){
-    if (hmg.generateNextLine()) {
-      setTimeout(stepGeneration, 1);
-    } else {
+  generateHeightMap = function(){
+    var hmg, stepGeneration, enableWebGL;
+    hmg = new HeightmapGenerator(ig, 256, 256);
+    hmg.startGenerate();
+    stepGeneration = function(){
+      if (hmg.generateNextLine()) {
+        setTimeout(stepGeneration, 1);
+      }
+    };
+    stepGeneration();
+    enableWebGL = function(){
+      var th;
+      th = new HeightmapThreeJS(hmg);
+      setInterval(function(){
+        return th.render();
+      }, 1000 / 40.0);
       th.updateMesh();
-    }
+    };
+    makeButton("WebGL", enableWebGL);
   };
-  stepGeneration();
+  makeButton("Generate Heightmap", generateHeightMap);
+  document.body.appendChild(document.createElement("br"));
 };
 main();

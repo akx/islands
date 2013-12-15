@@ -1,51 +1,75 @@
-var TerrainGeometry, HeightmapThreeJS;
-TerrainGeometry = function(xRes, yRes, data, dataWidth, dataHeight, heightScale){
-  var sample, vtxOff, vtxTable, y, x, z, to$, to1$, vo1, vo2, vo3, vo4, v1, v2, v3, v4, face;
-  heightScale == null && (heightScale = 1);
-  THREE.Geometry.call(this);
-  sample = function(segX, segY){
-    var dataX, dataY, ref$, ref1$, ref2$, ref3$;
-    dataX = 0 | Math.round(segX / xRes * dataWidth);
-    dataY = 0 | Math.round(segY / yRes * dataHeight);
-    dataX = (ref$ = 0 > dataX ? 0 : dataX) > (ref1$ = dataWidth - 1) ? ref$ : ref1$;
-    dataY = (ref2$ = 0 > dataY ? 0 : dataY) > (ref3$ = dataHeight - 1) ? ref2$ : ref3$;
-    return data[dataY * dataWidth + dataX];
-  };
-  vtxOff = function(segX, segY){
-    return (0 | segY) << 16 + (0 | segX);
-  };
-  vtxTable = {};
-  for (y = 0; y <= yRes; ++y) {
-    for (x = 0; x <= xRes; ++x) {
-      z = sample(x, y) * heightScale;
-      vtxTable[vtxOff(x, y)] = this.vertices.length;
-      this.vertices.push(new THREE.Vector3(x, z, y));
-    }
+var ThreePlaneWrapper, HeightmapThreeJS;
+ThreePlaneWrapper = (function(){
+  ThreePlaneWrapper.displayName = 'ThreePlaneWrapper';
+  var prototype = ThreePlaneWrapper.prototype, constructor = ThreePlaneWrapper;
+  function ThreePlaneWrapper(heightmap, resX, resY, heightScale){
+    this.heightmap = heightmap;
+    this.resX = resX;
+    this.resY = resY;
+    this.heightScale = heightScale != null ? heightScale : 1;
+    this.geometry = new THREE.PlaneGeometry(100, 100, this.resX, this.resY);
   }
-  for (y = 0, to$ = yRes - 1; y < to$; ++y) {
-    for (x = 0, to1$ = xRes - 1; x < to1$; ++x) {
-      vo1 = vtxTable[vtxOff(x, y)];
-      vo2 = vtxTable[vtxOff(x + 1, y)];
-      vo3 = vtxTable[vtxOff(x + 1, y + 1)];
-      vo4 = vtxTable[vtxOff(x, y + 1)];
-      v1 = this.vertices[vo1];
-      v2 = this.vertices[vo2];
-      v3 = this.vertices[vo3];
-      v4 = this.vertices[vo4];
-      if (v1.z < 0 || !(v1 && v2 && v3 && v4)) {
-        continue;
+  prototype.sample = function(x, y){
+    x /= this.resX;
+    y /= this.resY;
+    x *= this.heightmap.mapWidth;
+    y *= this.heightmap.mapHeight;
+    x = 0 | x;
+    y = 0 | y;
+    if (x < 0 || x > this.heightmap.mapWidth) {
+      return -1;
+    }
+    if (y < 0 || y > this.heightmap.mapHeight) {
+      return -1;
+    }
+    y = this.heightmap.heightmapData[y * this.heightmap.mapWidth + x] * this.heightScale;
+    if (y <= 0) {
+      y = -1;
+    }
+    return y;
+  };
+  prototype.update = function(){
+    var clampColor, y, to$, x, to1$, z, o, max, i$, x0$, ref$, len$, ref1$, j$, ref2$, len1$, face, vi, v, height, r, g, b, color;
+    clampColor = function(a){
+      if (a < 0) {
+        return 0;
       }
-      face = new THREE.Face3(vo1, vo2, vo4);
-      face.normal = new THREE.Vector3(0, 1, 0);
-      this.faces.push(face);
-      face = new THREE.Face3(vo2, vo3, vo4);
-      face.normal = new THREE.Vector3(0, 1, 0);
-      this.faces.push(face);
+      if (a >= 255) {
+        return 255;
+      }
+      return 0 | a;
+    };
+    for (y = 0, to$ = this.resX; y < to$; ++y) {
+      for (x = 0, to1$ = this.resY; x < to1$; ++x) {
+        z = this.sample(x, y);
+        o = y * (this.resX + 1) + x;
+        this.geometry.vertices[o].z = z;
+      }
     }
-  }
-  return this.computeCentroids();
-};
-TerrainGeometry.prototype = Object.create(THREE.Geometry.prototype);
+    max = 0;
+    for (i$ = 0, len$ = (ref$ = this.geometry.vertices).length; i$ < len$; ++i$) {
+      x0$ = ref$[i$];
+      max = max > (ref1$ = x0$.z) ? max : ref1$;
+    }
+    for (j$ = 0, len1$ = (ref2$ = this.geometry.faces).length; j$ < len1$; ++j$) {
+      face = ref2$[j$];
+      for (vi = 0; vi < 3; ++vi) {
+        v = this.geometry.vertices[face[['a', 'b', 'c'][vi]]];
+        height = v.z / max;
+        r = g = b = 0 | 255 * height;
+        color = new THREE.Color(clampColor(r) << 16 | clampColor(g) << 8 | clampColor(b));
+        face.vertexColors[vi] = color;
+      }
+    }
+    this.geometry.computeCentroids();
+    this.geometry.computeFaceNormals();
+    this.geometry.computeVertexNormals();
+    this.geometry.verticesNeedUpdate = true;
+    this.geometry.colorsNeedUpdate = true;
+    return this.geometry;
+  };
+  return ThreePlaneWrapper;
+}());
 HeightmapThreeJS = (function(){
   HeightmapThreeJS.displayName = 'HeightmapThreeJS';
   var prototype = HeightmapThreeJS.prototype, constructor = HeightmapThreeJS;
@@ -64,28 +88,32 @@ HeightmapThreeJS = (function(){
     document.body.appendChild(x0$.domElement);
     this.camera = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 0.1, 1000);
     this.pointLight = new THREE.PointLight(0xFFFFFF);
+    this.sea = new THREE.Mesh(new THREE.PlaneGeometry(100, 100, 3, 3), new THREE.MeshLambertMaterial({
+      color: 0x53BEFF
+    }));
+    this.sea.rotation.x = Math.PI * -0.5;
     x1$ = this.scene = new THREE.Scene();
     x1$.add(this.camera);
     x1$.add(this.pointLight);
+    x1$.add(this.sea);
     x1$.add(new THREE.AxisHelper(10));
-    x1$.add(new THREE.GridHelper(100, 5));
   }
   prototype.updateMesh = function(){
-    var material, geometry, plane;
+    var material, tpw, geometry, plane;
     material = new THREE.MeshLambertMaterial({
-      color: 0x5B8F50,
-      shading: THREE.FlatShading,
-      vertexColors: THREE.VertexColors,
-      side: THREE.DoubleSide
+      color: 0xFFFFFF,
+      vertexColors: THREE.VertexColors
     });
-    geometry = new TerrainGeometry(32, 32, this.heightmap.heightmapData, this.heightmap.mapWidth, this.heightmap.mapHeight, 0.1);
-    geometry.verticesNeedUpdate = true;
+    tpw = new ThreePlaneWrapper(this.heightmap, 64, 64, 0.1);
+    geometry = tpw.update();
     plane = new THREE.Mesh(geometry, material);
     if (this.plane) {
       this.scene.remove(this.plane);
       this.plane = null;
     }
     this.plane = plane;
+    this.plane.rotation.x = Math.PI * -0.5;
+    this.scene.add(plane);
   };
   prototype.render = function(){
     var ang, c, s, p, ref$;
@@ -95,9 +123,9 @@ HeightmapThreeJS = (function(){
     p = this.camera.position = new THREE.Vector3(c, 50, s);
     this.camera.lookAt(new THREE.Vector3(0, 0, 0));
     ref$ = this.pointLight.position;
-    ref$.x = p.x - 10;
-    ref$.y = p.y;
-    ref$.z = p.z - 10;
+    ref$.x = 15;
+    ref$.y = 60;
+    ref$.z = 15;
     this.renderer.render(this.scene, this.camera);
   };
   return HeightmapThreeJS;

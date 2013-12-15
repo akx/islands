@@ -173,7 +173,7 @@ class HeightmapGenerator
 		@scaleX = @mapWidth / @ig.width
 		@scaleY = @mapHeight / @ig.height
 
-		for document.querySelectorAll("canvas") => &parentNode.removeChild(&)
+		#for document.querySelectorAll("canvas") => &parentNode.removeChild(&)
 
 		@debugCanvas = document.createElement("canvas")
 			&width = @mapWidth
@@ -540,21 +540,35 @@ makeUI = !(ig) ->
 			guiParam.onChange(debouncedGenerate)
 	ig.gui = gui
 
+makeButton = (text, handler) ->
+	button = document.createElement("button")
+		&innerHTML = text
+		&addEventListener "click", handler, false
+		document.body.appendChild &
+
 main = !->
 	window.ig = ig = new IslandGenerator("dkkkhurf a der3")
 	makeUI(ig)
 
 	ig.regenerateAndDraw()
 
-	hmg = new HeightmapGenerator(ig, 64, 64)
-	hmg.startGenerate()
-	th = new HeightmapThreeJS(hmg)
-	setInterval((->th.render()), 1000 / 24.0)
-	stepGeneration = !->
-		if hmg.generateNextLine() then
-			setTimeout(stepGeneration, 1)
-		else
+	generateHeightMap = !->
+		hmg = new HeightmapGenerator(ig, 256, 256)
+		hmg.startGenerate()
+		stepGeneration = !->
+			if hmg.generateNextLine() then
+				setTimeout(stepGeneration, 1)
+		stepGeneration()
+
+		enableWebGL = !->
+			th = new HeightmapThreeJS(hmg)
+			setInterval((->th.render()), 1000 / 40.0)
 			th.updateMesh()
-	stepGeneration()
+
+		makeButton("WebGL", enableWebGL)
+
+	makeButton("Generate Heightmap", generateHeightMap)
+	document.body.appendChild document.createElement("br")
+
 
 main()

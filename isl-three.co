@@ -1,47 +1,54 @@
-TerrainGeometry = (xRes, yRes, data, dataWidth, dataHeight, heightScale=1 ) ->
-	THREE.Geometry.call( this )
+class ThreePlaneWrapper
+	(@heightmap, @resX, @resY, @heightScale=1) ->
+		@geometry = new THREE.PlaneGeometry(100, 100, @resX, @resY)
 
-	sample = !(segX, segY) ->
-		dataX = 0 | Math.round(segX / xRes * dataWidth)
-		dataY = 0 | Math.round(segY / yRes * dataHeight)
-		dataX = 0 >? dataX >? (dataWidth - 1)
-		dataY = 0 >? dataY >? (dataHeight - 1)
-		return data[dataY * dataWidth + dataX]
+	sample: (x, y) ->
+		x /= @resX
+		y /= @resY
+		x *= @heightmap.mapWidth
+		y *= @heightmap.mapHeight
+		x = 0 | x
+		y = 0 | y
+		if x < 0 or x > @heightmap.mapWidth then return -1
+		if y < 0 or y > @heightmap.mapHeight then return -1
+		y = @heightmap.heightmapData[y * @heightmap.mapWidth + x] * @heightScale
+		if y <= 0 then y = -1
+		return y
 
-	vtxOff = !(segX, segY) ->
-		return (0 | segY) << 16 + (0 | segX)
+	update: !->
+		clampColor = !(a) ->
+			return 0 if a < 0
+			return 255 if a >= 255
+			return (0 | a)
 
-	vtxTable = {}
+		for y from 0 til @resX
+			for x from 0 til @resY
+				z = @sample(x, y)
+				o = y * (@resX + 1) + x
+				@geometry.vertices[o].z = z
 
-	for y from 0 to yRes
-		for x from 0 to xRes
-			z = sample(x, y) * heightScale
-			vtxTable[vtxOff(x, y)] = @vertices.length
-			@vertices.push(new THREE.Vector3(x, z, y))
+		max = 0
+		for @geometry.vertices => max = max >? &z
 
-	for y from 0 til yRes - 1
-		for x from 0 til xRes - 1
-			vo1 = vtxTable[vtxOff(x, y)]
-			vo2 = vtxTable[vtxOff(x + 1, y)]
-			vo3 = vtxTable[vtxOff(x + 1, y + 1)]
-			vo4 = vtxTable[vtxOff(x, y + 1)]
-			v1 = @vertices[vo1]
-			v2 = @vertices[vo2]
-			v3 = @vertices[vo3]
-			v4 = @vertices[vo4]
-			continue if v1.z < 0 or not (v1 and v2 and v3 and v4)
-			#console.log v1, v2, v3, v4
 
-			face = new THREE.Face3(vo1, vo2, vo4)
-			face.normal = new THREE.Vector3(0, 1, 0)
-			@faces.push(face)
-			face = new THREE.Face3(vo2, vo3, vo4)
-			face.normal = new THREE.Vector3(0, 1, 0)
-			@faces.push(face)
+		for face of @geometry.faces
+			for vi from 0 til 3
+				v = @geometry.vertices[face[<[a b c]>[vi]]]
+				height = (v.z / max)
+				r = g = b = 0 | (255 * height)
 
-	@computeCentroids()
+				color = new THREE.Color(clampColor(r) << 16 | clampColor(g) << 8 | clampColor(b))
+				face.vertexColors[vi] = color
+			
+		@geometry.computeCentroids()
+		@geometry.computeFaceNormals()
+		@geometry.computeVertexNormals()			
+		@geometry.verticesNeedUpdate = true
+		@geometry.colorsNeedUpdate = true
+		return @geometry
 
-TerrainGeometry.prototype = Object.create( THREE.Geometry.prototype );
+
+
 
 class HeightmapThreeJS
 	(@heightmap) ->
@@ -55,21 +62,32 @@ class HeightmapThreeJS
 			document.body.appendChild(&domElement)
 		@camera = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 0.1, 1000)
 		@pointLight = new THREE.PointLight(0xFFFFFF)
+		@sea = new THREE.Mesh(
+			new THREE.PlaneGeometry(100, 100, 3, 3),
+			new THREE.MeshLambertMaterial({color: 0x53BEFF})
+		)
+		@sea.rotation.x = Math.PI * -0.5
+
 		@scene = new THREE.Scene()
 			&add(@camera)
 			&add(@pointLight)
+			&add(@sea)
 			&add(new THREE.AxisHelper(10))
-			&add(new THREE.GridHelper(100, 5))
+			#&add(new THREE.GridHelper(100, 5))
+
 
 	updateMesh: !->
-		material = new THREE.MeshLambertMaterial({color: 0x5B8F50, shading: THREE.FlatShading, vertexColors: THREE.VertexColors, side: THREE.DoubleSide})
-		geometry = new TerrainGeometry(32, 32, @heightmap.heightmapData, @heightmap.mapWidth, @heightmap.mapHeight, 0.1)
-		geometry.verticesNeedUpdate = true
+		material = new THREE.MeshLambertMaterial({color: 0xFFFFFF, vertexColors: THREE.VertexColors})
+		tpw = new ThreePlaneWrapper(@heightmap, 64, 64, 0.1)
+		geometry = tpw.update()
 		plane = new THREE.Mesh(geometry, material)
 		if @plane
 			@scene.remove(@plane)
 			@plane = null
 		@plane = plane
+		@plane.rotation.x = Math.PI * -0.5
+		@scene.add(plane)
+
 
 	
 	render: !->
@@ -78,5 +96,5 @@ class HeightmapThreeJS
 		s = Math.sin(ang) * 50
 		p = @camera.position = new THREE.Vector3(c, 50, s)
 		@camera.lookAt(new THREE.Vector3(0, 0, 0))
-		@pointLight.position <<< {x: p.x - 10, y: p.y, z: p.z - 10}
+		@pointLight.position <<< {x: 15, y: 60, z: 15}#p.x - 10, y: p.y, z: p.z - 10}
 		@renderer.render(@scene, @camera)
