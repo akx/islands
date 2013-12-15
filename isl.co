@@ -1,5 +1,7 @@
 const PI2 = Math.PI * 2
 
+rand = (a, b) -> a + Math.random() * (b - a)
+
 class RC4Rand
 	(seed) ->
 		@s = (for x from 0 til 256 => x)
@@ -178,8 +180,8 @@ class HeightmapGenerator
 			&height = @mapHeight
 			@debugCtx = &getContext("2d")
 			&style.border = "1px solid red"
-			#&style.width = "500px"
-			#&style.height = "500px"
+			&style.width = "500px"
+			&style.height = "500px"
 			document.body.appendChild(&)
 		
 		@scratchCanvas = document.createElement("canvas")
@@ -275,8 +277,12 @@ class HeightmapGenerator
 			red = scratchData[x * 4]
 			if red == 255 then
 				dataOffset = y * @mapWidth + x
-				height = @generatePoint(x, y)
-				@heightmapData[dataOffset] = height
+				const N_SAMPLES = 5
+				const SAMPLE_JITTER = 1
+				height = 0
+				for i from 0 til N_SAMPLES
+					height += @generatePoint(x + rand(-SAMPLE_JITTER, +SAMPLE_JITTER), y + rand(-SAMPLE_JITTER, SAMPLE_JITTER))
+				@heightmapData[dataOffset] = height / N_SAMPLES
 		@_updateDebugCanvas()
 
 	_getSegmentDistances: !(x, y) ->
@@ -295,28 +301,32 @@ class HeightmapGenerator
 	generatePoint: !(x, y) ->
 		distances = @_getSegmentDistances(x, y)
 		ds1 = closestDs = distances[0]
-		higherDs = null
-		lowerDs = null
+		# higherDs = null
+		# lowerDs = null
 		for distance of distances
-			if not lowerDs and distance.height < closestDs.height then
-				lowerDs = distance
-			if not higherDs and distance.height > closestDs.height then
-				higherDs = distance
-			if lowerDs and higherDs then break
+			if distance.height != ds1.height then
+				ds2 = distance
+				break
+		# 	if not lowerDs and distance.height < closestDs.height then
+		# 		lowerDs = distance
+		# 	if not higherDs and distance.height > closestDs.height then
+		# 		higherDs = distance
+		# 	if lowerDs and higherDs then break
 
-		ds2 = lowerDs or higherDs or ds1
+		# ds2 = lowerDs or higherDs or ds1
 
-		if lowerDs and higherDs then
-			if lowerDs.distance < higherDs.distance then
-				ds2 = lowerDs
-			else 
-				ds2 = higherDs
+		# if lowerDs and higherDs then
+		# 	if lowerDs.distance < higherDs.distance then
+		# 		ds2 = lowerDs
+		# #	else 
+		# #		ds2 = higherDs
 
-		if not ds2 then
-			return ds1.height
+		# if not ds2 then
+		# 	return ds1.height
 		#console.log x, y
 		#console.log ds1
 		#console.log ds2
+		ds2 = ds2 or ds1
 		pt1 = ds1.pt
 		pt2 = ds2.pt
 		cpd = closestPointOnSegment([x, y], pt1, pt2)
@@ -536,16 +546,15 @@ main = !->
 
 	ig.regenerateAndDraw()
 
-	hmg = new HeightmapGenerator(ig, 256, 256)
+	hmg = new HeightmapGenerator(ig, 64, 64)
 	hmg.startGenerate()
+	th = new HeightmapThreeJS(hmg)
+	setInterval((->th.render()), 1000 / 24.0)
 	stepGeneration = !->
 		if hmg.generateNextLine() then
 			setTimeout(stepGeneration, 1)
 		else
-			0
-			#th = new HeightmapThreeJS(hmg)
-			#th.updateMesh()
-			#setInterval((->th.render()), 1000 / 24.0)
+			th.updateMesh()
 	stepGeneration()
 
 main()

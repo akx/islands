@@ -1,60 +1,48 @@
 var TerrainGeometry, HeightmapThreeJS;
-TerrainGeometry = function(width, height, widthSegments, heightSegments, data, scale){
-  var width_half, height_half, gridX, gridZ, gridX1, gridZ1, segment_width, segment_height, normal, iz, ix, x, y, z, a, b, c, d, uva, uvb, uvc, uvd, face;
-  scale == null && (scale = 1);
+TerrainGeometry = function(xRes, yRes, data, dataWidth, dataHeight, heightScale){
+  var sample, vtxOff, vtxTable, y, x, z, to$, to1$, vo1, vo2, vo3, vo4, v1, v2, v3, v4, face;
+  heightScale == null && (heightScale = 1);
   THREE.Geometry.call(this);
-  this.width = width;
-  this.height = height;
-  this.widthSegments = widthSegments || 1;
-  this.heightSegments = heightSegments || 1;
-  width_half = width / 2;
-  height_half = height / 2;
-  gridX = this.widthSegments;
-  gridZ = this.heightSegments;
-  gridX1 = gridX + 1;
-  gridZ1 = gridZ + 1;
-  segment_width = this.width / gridX;
-  segment_height = this.height / gridZ;
-  normal = new THREE.Vector3(0, 1, 0);
-  for (iz = 0; iz < gridZ1; ++iz) {
-    for (ix = 0; ix < gridX1; ++ix) {
-      x = ix * segment_width - width_half;
-      y = iz * segment_height - height_half;
-      if ((0 <= ix && ix < gridX) && (0 <= iz && iz < gridZ)) {
-        z = data[iz * widthSegments + ix] * scale;
-      } else {
-        z = 0;
-      }
+  sample = function(segX, segY){
+    var dataX, dataY, ref$, ref1$, ref2$, ref3$;
+    dataX = 0 | Math.round(segX / xRes * dataWidth);
+    dataY = 0 | Math.round(segY / yRes * dataHeight);
+    dataX = (ref$ = 0 > dataX ? 0 : dataX) > (ref1$ = dataWidth - 1) ? ref$ : ref1$;
+    dataY = (ref2$ = 0 > dataY ? 0 : dataY) > (ref3$ = dataHeight - 1) ? ref2$ : ref3$;
+    return data[dataY * dataWidth + dataX];
+  };
+  vtxOff = function(segX, segY){
+    return (0 | segY) << 16 + (0 | segX);
+  };
+  vtxTable = {};
+  for (y = 0; y <= yRes; ++y) {
+    for (x = 0; x <= xRes; ++x) {
+      z = sample(x, y) * heightScale;
+      vtxTable[vtxOff(x, y)] = this.vertices.length;
       this.vertices.push(new THREE.Vector3(x, z, y));
     }
   }
-  for (iz = 0; iz < gridZ; ++iz) {
-    for (ix = 0; ix < gridX; ++ix) {
-      z = data[iz * widthSegments + ix];
-      if (z <= 0) {
+  for (y = 0, to$ = yRes - 1; y < to$; ++y) {
+    for (x = 0, to1$ = xRes - 1; x < to1$; ++x) {
+      vo1 = vtxTable[vtxOff(x, y)];
+      vo2 = vtxTable[vtxOff(x + 1, y)];
+      vo3 = vtxTable[vtxOff(x + 1, y + 1)];
+      vo4 = vtxTable[vtxOff(x, y + 1)];
+      v1 = this.vertices[vo1];
+      v2 = this.vertices[vo2];
+      v3 = this.vertices[vo3];
+      v4 = this.vertices[vo4];
+      if (v1.z < 0 || !(v1 && v2 && v3 && v4)) {
         continue;
       }
-      a = ix + gridX1 * iz;
-      b = ix + gridX1 * (iz + 1);
-      c = (ix + 1) + gridX1 * (iz + 1);
-      d = (ix + 1) + gridX1 * iz;
-      uva = new THREE.Vector2(ix / gridX, 1 - iz / gridZ);
-      uvb = new THREE.Vector2(ix / gridX, 1 - (iz + 1) / gridZ);
-      uvc = new THREE.Vector2((ix + 1) / gridX, 1 - (iz + 1) / gridZ);
-      uvd = new THREE.Vector2((ix + 1) / gridX, 1 - iz / gridZ);
-      face = new THREE.Face3(a, b, d);
-      face.normal.copy(normal);
-      face.vertexNormals.push(normal.clone(), normal.clone(), normal.clone());
+      face = new THREE.Face3(vo1, vo2, vo4);
+      face.normal = new THREE.Vector3(0, 1, 0);
       this.faces.push(face);
-      this.faceVertexUvs[0].push([uva, uvb, uvd]);
-      face = new THREE.Face3(b, c, d);
-      face.normal.copy(normal);
-      face.vertexNormals.push(normal.clone(), normal.clone(), normal.clone());
+      face = new THREE.Face3(vo2, vo3, vo4);
+      face.normal = new THREE.Vector3(0, 1, 0);
       this.faces.push(face);
-      this.faceVertexUvs[0].push([uvb.clone(), uvc, uvd.clone()]);
     }
   }
-  console.log(this);
   return this.computeCentroids();
 };
 TerrainGeometry.prototype = Object.create(THREE.Geometry.prototype);
@@ -62,30 +50,42 @@ HeightmapThreeJS = (function(){
   HeightmapThreeJS.displayName = 'HeightmapThreeJS';
   var prototype = HeightmapThreeJS.prototype, constructor = HeightmapThreeJS;
   function HeightmapThreeJS(heightmap){
-    var WIDTH, HEIGHT, VIEW_ANGLE, ASPECT, x0$, geometry, material, x1$;
+    var WIDTH, HEIGHT, VIEW_ANGLE, ASPECT, x0$, x1$;
     this.heightmap = heightmap;
     WIDTH = 640;
     HEIGHT = 480;
     VIEW_ANGLE = 60;
     ASPECT = WIDTH / HEIGHT;
-    x0$ = this.renderer = new THREE.WebGLRenderer();
+    x0$ = this.renderer = new THREE.WebGLRenderer({
+      antialias: true
+    });
+    x0$.setClearColor(0xFFFFFF);
     x0$.setSize(WIDTH, HEIGHT);
     document.body.appendChild(x0$.domElement);
     this.camera = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 0.1, 1000);
-    geometry = new THREE.Geometry();
-    material = new THREE.MeshLambertMaterial({
-      color: 0xFFCC00
-    });
-    this.plane = new THREE.Mesh(geometry, material);
     this.pointLight = new THREE.PointLight(0xFFFFFF);
     x1$ = this.scene = new THREE.Scene();
     x1$.add(this.camera);
-    x1$.add(this.plane);
     x1$.add(this.pointLight);
+    x1$.add(new THREE.AxisHelper(10));
+    x1$.add(new THREE.GridHelper(100, 5));
   }
   prototype.updateMesh = function(){
-    this.plane.geometry = new TerrainGeometry(50, 50, this.heightmap.mapWidth, this.heightmap.mapHeight, this.heightmap.heightmapData, 0.1);
-    this.plane.geometry.verticesNeedUpdate = true;
+    var material, geometry, plane;
+    material = new THREE.MeshLambertMaterial({
+      color: 0x5B8F50,
+      shading: THREE.FlatShading,
+      vertexColors: THREE.VertexColors,
+      side: THREE.DoubleSide
+    });
+    geometry = new TerrainGeometry(32, 32, this.heightmap.heightmapData, this.heightmap.mapWidth, this.heightmap.mapHeight, 0.1);
+    geometry.verticesNeedUpdate = true;
+    plane = new THREE.Mesh(geometry, material);
+    if (this.plane) {
+      this.scene.remove(this.plane);
+      this.plane = null;
+    }
+    this.plane = plane;
   };
   prototype.render = function(){
     var ang, c, s, p, ref$;

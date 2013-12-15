@@ -1,63 +1,44 @@
-TerrainGeometry = ( width, height, widthSegments, heightSegments, data, scale=1 ) ->
+TerrainGeometry = (xRes, yRes, data, dataWidth, dataHeight, heightScale=1 ) ->
 	THREE.Geometry.call( this )
-	@width = width
-	@height = height
-	@widthSegments = widthSegments || 1
-	@heightSegments = heightSegments || 1
-	width_half = width / 2
-	height_half = height / 2
 
-	gridX = this.widthSegments
-	gridZ = this.heightSegments
+	sample = !(segX, segY) ->
+		dataX = 0 | Math.round(segX / xRes * dataWidth)
+		dataY = 0 | Math.round(segY / yRes * dataHeight)
+		dataX = 0 >? dataX >? (dataWidth - 1)
+		dataY = 0 >? dataY >? (dataHeight - 1)
+		return data[dataY * dataWidth + dataX]
 
-	gridX1 = gridX + 1
-	gridZ1 = gridZ + 1
+	vtxOff = !(segX, segY) ->
+		return (0 | segY) << 16 + (0 | segX)
 
-	segment_width = this.width / gridX
-	segment_height = this.height / gridZ
+	vtxTable = {}
 
-	normal = new THREE.Vector3( 0, 1, 0 )
+	for y from 0 to yRes
+		for x from 0 to xRes
+			z = sample(x, y) * heightScale
+			vtxTable[vtxOff(x, y)] = @vertices.length
+			@vertices.push(new THREE.Vector3(x, z, y))
 
-	for iz from 0 til gridZ1
-		for ix from 0 til gridX1		
-			x = ix * segment_width - width_half;
-			y = iz * segment_height - height_half;
-			if 0 <= ix < gridX and 0 <= iz < gridZ then
-				z = data[iz * widthSegments + ix] * scale
-			else
-				z = 0
-			@vertices.push( new THREE.Vector3( x, z, y ) )
+	for y from 0 til yRes - 1
+		for x from 0 til xRes - 1
+			vo1 = vtxTable[vtxOff(x, y)]
+			vo2 = vtxTable[vtxOff(x + 1, y)]
+			vo3 = vtxTable[vtxOff(x + 1, y + 1)]
+			vo4 = vtxTable[vtxOff(x, y + 1)]
+			v1 = @vertices[vo1]
+			v2 = @vertices[vo2]
+			v3 = @vertices[vo3]
+			v4 = @vertices[vo4]
+			continue if v1.z < 0 or not (v1 and v2 and v3 and v4)
+			#console.log v1, v2, v3, v4
 
-	for iz from 0 til gridZ
-		for ix from 0 til gridX		
-			z = data[iz * widthSegments + ix]
-			continue if z <= 0
+			face = new THREE.Face3(vo1, vo2, vo4)
+			face.normal = new THREE.Vector3(0, 1, 0)
+			@faces.push(face)
+			face = new THREE.Face3(vo2, vo3, vo4)
+			face.normal = new THREE.Vector3(0, 1, 0)
+			@faces.push(face)
 
-			a = ix + gridX1 * iz
-			b = ix + gridX1 * ( iz + 1 )
-			c = ( ix + 1 ) + gridX1 * ( iz + 1 )
-			d = ( ix + 1 ) + gridX1 * iz
-
-			uva = new THREE.Vector2( ix / gridX, 1 - iz / gridZ )
-			uvb = new THREE.Vector2( ix / gridX, 1 - ( iz + 1 ) / gridZ )
-			uvc = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - ( iz + 1 ) / gridZ )
-			uvd = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - iz / gridZ )
-
-			face = new THREE.Face3( a, b, d )
-			face.normal.copy( normal );
-			face.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );
-
-			this.faces.push( face );
-			this.faceVertexUvs[ 0 ].push( [ uva, uvb, uvd ] );
-
-			face = new THREE.Face3( b, c, d );
-			face.normal.copy( normal );
-			face.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );
-
-			this.faces.push( face );
-			this.faceVertexUvs[ 0 ].push( [ uvb.clone(), uvc, uvd.clone() ] );
-
-	console.log @
 	@computeCentroids()
 
 TerrainGeometry.prototype = Object.create( THREE.Geometry.prototype );
@@ -68,24 +49,27 @@ class HeightmapThreeJS
 		HEIGHT = 480
 		VIEW_ANGLE = 60
 		ASPECT = WIDTH / HEIGHT
-		@renderer = new THREE.WebGLRenderer()
+		@renderer = new THREE.WebGLRenderer({+antialias})
+			&setClearColor(0xFFFFFF)
 			&setSize(WIDTH, HEIGHT)
 			document.body.appendChild(&domElement)
 		@camera = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 0.1, 1000)
-		geometry = new THREE.Geometry()
-		material = new THREE.MeshLambertMaterial({color: 0xFFCC00})
-		@plane = new THREE.Mesh(geometry, material)
-
-		@pointLight = new THREE.PointLight(0xFFFFFF);
-
+		@pointLight = new THREE.PointLight(0xFFFFFF)
 		@scene = new THREE.Scene()
 			&add(@camera)
-			&add(@plane)
 			&add(@pointLight)
+			&add(new THREE.AxisHelper(10))
+			&add(new THREE.GridHelper(100, 5))
 
 	updateMesh: !->
-		@plane.geometry = new TerrainGeometry(50, 50, @heightmap.mapWidth, @heightmap.mapHeight, @heightmap.heightmapData, 0.1)
-		@plane.geometry.verticesNeedUpdate = true
+		material = new THREE.MeshLambertMaterial({color: 0x5B8F50, shading: THREE.FlatShading, vertexColors: THREE.VertexColors, side: THREE.DoubleSide})
+		geometry = new TerrainGeometry(32, 32, @heightmap.heightmapData, @heightmap.mapWidth, @heightmap.mapHeight, 0.1)
+		geometry.verticesNeedUpdate = true
+		plane = new THREE.Mesh(geometry, material)
+		if @plane
+			@scene.remove(@plane)
+			@plane = null
+		@plane = plane
 
 	
 	render: !->

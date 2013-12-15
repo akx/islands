@@ -1,5 +1,8 @@
-var PI2, RC4Rand, RandomFarm, Gradient, lerp, getDistance, getSquaredDistance, distToSegmentSquared, distToSegment, closestPointOnSegment, poly2clipper, clipper2poly, poly_op, merge, cut, outsetPoly, makeRotator, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, ParamGroup, ParamCollection, HeightmapGenerator, IslandGenerator, makeUI, main;
+var PI2, rand, RC4Rand, RandomFarm, Gradient, lerp, getDistance, getSquaredDistance, distToSegmentSquared, distToSegment, closestPointOnSegment, poly2clipper, clipper2poly, poly_op, merge, cut, outsetPoly, makeRotator, jitterPoly, offsetPoly, IntParam, FloatParam, BoolParam, StringParam, ParamGroup, ParamCollection, HeightmapGenerator, IslandGenerator, makeUI, main;
 PI2 = Math.PI * 2;
+rand = function(a, b){
+  return a + Math.random() * (b - a);
+};
 RC4Rand = (function(){
   RC4Rand.displayName = 'RC4Rand';
   var prototype = RC4Rand.prototype, constructor = RC4Rand;
@@ -346,6 +349,8 @@ HeightmapGenerator = (function(){
     x1$.height = this.mapHeight;
     this.debugCtx = x1$.getContext("2d");
     x1$.style.border = "1px solid red";
+    x1$.style.width = "500px";
+    x1$.style.height = "500px";
     document.body.appendChild(x1$);
     x2$ = this.scratchCanvas = document.createElement("canvas");
     x2$.width = this.mapWidth;
@@ -449,15 +454,20 @@ HeightmapGenerator = (function(){
     return true;
   };
   prototype.generateLine = function(y){
-    var scratchData, x, to$, red, dataOffset, height;
+    var scratchData, x, to$, red, dataOffset, N_SAMPLES, SAMPLE_JITTER, height, i;
     console.log("generating line: " + y);
     scratchData = this.scratchCtx.getImageData(0, y, this.mapWidth, 1).data;
     for (x = 0, to$ = this.mapWidth; x < to$; ++x) {
       red = scratchData[x * 4];
       if (red == 255) {
         dataOffset = y * this.mapWidth + x;
-        height = this.generatePoint(x, y);
-        this.heightmapData[dataOffset] = height;
+        N_SAMPLES = 5;
+        SAMPLE_JITTER = 1;
+        height = 0;
+        for (i = 0; i < N_SAMPLES; ++i) {
+          height += this.generatePoint(x + rand(-SAMPLE_JITTER, +SAMPLE_JITTER), y + rand(-SAMPLE_JITTER, SAMPLE_JITTER));
+        }
+        this.heightmapData[dataOffset] = height / N_SAMPLES;
       }
     }
     this._updateDebugCanvas();
@@ -484,34 +494,17 @@ HeightmapGenerator = (function(){
     return distances;
   };
   prototype.generatePoint = function(x, y){
-    var distances, ds1, closestDs, higherDs, lowerDs, i$, len$, distance, ds2, pt1, pt2, cpd, interpLength, d1, d2, interpAlpha;
+    var distances, ds1, closestDs, i$, len$, distance, ds2, pt1, pt2, cpd, interpLength, d1, d2, interpAlpha;
     distances = this._getSegmentDistances(x, y);
     ds1 = closestDs = distances[0];
-    higherDs = null;
-    lowerDs = null;
     for (i$ = 0, len$ = distances.length; i$ < len$; ++i$) {
       distance = distances[i$];
-      if (!lowerDs && distance.height < closestDs.height) {
-        lowerDs = distance;
-      }
-      if (!higherDs && distance.height > closestDs.height) {
-        higherDs = distance;
-      }
-      if (lowerDs && higherDs) {
+      if (distance.height != ds1.height) {
+        ds2 = distance;
         break;
       }
     }
-    ds2 = lowerDs || higherDs || ds1;
-    if (lowerDs && higherDs) {
-      if (lowerDs.distance < higherDs.distance) {
-        ds2 = lowerDs;
-      } else {
-        ds2 = higherDs;
-      }
-    }
-    if (!ds2) {
-      return ds1.height;
-    }
+    ds2 = ds2 || ds1;
     pt1 = ds1.pt;
     pt2 = ds2.pt;
     cpd = closestPointOnSegment([x, y], pt1, pt2);
@@ -725,17 +718,21 @@ makeUI = function(ig){
   ig.gui = gui;
 };
 main = function(){
-  var ig, hmg, stepGeneration;
+  var ig, hmg, th, stepGeneration;
   window.ig = ig = new IslandGenerator("dkkkhurf a der3");
   makeUI(ig);
   ig.regenerateAndDraw();
-  hmg = new HeightmapGenerator(ig, 256, 256);
+  hmg = new HeightmapGenerator(ig, 64, 64);
   hmg.startGenerate();
+  th = new HeightmapThreeJS(hmg);
+  setInterval(function(){
+    return th.render();
+  }, 1000 / 24.0);
   stepGeneration = function(){
     if (hmg.generateNextLine()) {
       setTimeout(stepGeneration, 1);
     } else {
-      0;
+      th.updateMesh();
     }
   };
   stepGeneration();
