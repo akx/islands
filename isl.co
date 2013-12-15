@@ -190,7 +190,7 @@ class HeightmapGenerator
 			@scratchCtx = &getContext("2d")
 			&style.border = "1px solid black"
 
-			#document.body.appendChild(&)
+			# document.body.appendChild(&)
 
 		@heightmapData = new Float32Array(mapWidth * mapHeight)
 
