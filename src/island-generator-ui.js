@@ -1,9 +1,8 @@
 import debounce from 'lodash/debounce';
 import dat from 'dat.gui/build/dat.gui';
 import {HeightmapThreeJS} from './HeightmapThreeJS';
-
+import IslandGenerator from './IslandGenerator';
 const HeightmapGenerator = require('./HeightmapGenerator.co');
-const IslandGenerator = require('./IslandGenerator.co');
 
 function makeUI(ig) {
   const debouncedGenerate = debounce(() => ig.regenerateAndDraw(), 50);
