@@ -48,7 +48,7 @@ class ThreePlaneWrapper {
       y = -1;
     }
     return y;
-  };
+  }
 
   update() {
     for (let y = 0; y < this.resX; ++y) {
@@ -79,7 +79,7 @@ class ThreePlaneWrapper {
     this.geometry.verticesNeedUpdate = true;
     this.geometry.colorsNeedUpdate = true;
     return this.geometry;
-  };
+  }
 }
 
 export class HeightmapThreeJS {
@@ -120,7 +120,7 @@ export class HeightmapThreeJS {
     this.plane = plane;
     this.plane.rotation.x = Math.PI * -0.5;
     this.scene.add(plane);
-  };
+  }
 
   render() {
     const ang = +new Date() * -0.0005;
@@ -134,6 +134,6 @@ export class HeightmapThreeJS {
     this.pointLight.position.y = 60;
     this.pointLight.position.z = 15;
     this.renderer.render(this.scene, this.camera);
-  };
+  }
 }
 
