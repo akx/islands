@@ -1,3 +1,5 @@
+const THREE = require('three')
+
 class ThreePlaneWrapper
 	(@heightmap, @resX, @resY, @heightScale=1) ->
 		@geometry = new THREE.PlaneGeometry(100, 100, @resX, @resY)
@@ -30,17 +32,16 @@ class ThreePlaneWrapper
 		max = 0
 		for @geometry.vertices => max = max >? &z
 
-
+		const faceIndices = <[a b c]>
 		for face of @geometry.faces
 			for vi from 0 til 3
-				v = @geometry.vertices[face[<[a b c]>[vi]]]
+				v = @geometry.vertices[face[faceIndices[vi]]]
 				height = (v.z / max)
 				r = g = b = 0 | (255 * height)
 
 				color = new THREE.Color(clampColor(r) << 16 | clampColor(g) << 8 | clampColor(b))
 				face.vertexColors[vi] = color
-			
-		@geometry.computeCentroids()
+
 		@geometry.computeFaceNormals()
 		@geometry.computeVertexNormals()			
 		@geometry.verticesNeedUpdate = true
@@ -77,7 +78,7 @@ class HeightmapThreeJS
 
 
 	updateMesh: !->
-		material = new THREE.MeshLambertMaterial({color: 0xFFFFFF, vertexColors: THREE.VertexColors})
+		material = new THREE.MeshPhongMaterial({color: 0xFFFFFF, vertexColors: THREE.VertexColors})
 		tpw = new ThreePlaneWrapper(@heightmap, 64, 64, 0.1)
 		geometry = tpw.update()
 		plane = new THREE.Mesh(geometry, material)
@@ -94,7 +95,11 @@ class HeightmapThreeJS
 		ang = +new Date() * -0.0005
 		c = Math.cos(ang) * 50
 		s = Math.sin(ang) * 50
-		p = @camera.position = new THREE.Vector3(c, 50, s)
-		@camera.lookAt(new THREE.Vector3(0, 0, 0))
-		@pointLight.position <<< {x: 15, y: 60, z: 15}#p.x - 10, y: p.y, z: p.z - 10}
+		@camera.position.x = c
+		@camera.position.y = 50
+		@camera.position.z = s
+		@camera.lookAt(@scene.position)
+		@pointLight.position <<< {x: 15, y: 60, z: 15}
 		@renderer.render(@scene, @camera)
+
+module.exports = HeightmapThreeJS

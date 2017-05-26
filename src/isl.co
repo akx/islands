@@ -1,4 +1,14 @@
+const debounce = require('lodash/debounce')
+const dat = require('dat.gui/build/dat.gui.js')
+const ClipperLib = require('clipper-lib')
+const SVG = require('svg.js')
+require('svg.filter.js')
+ClipperLib.Error = (err) -> throw new Error(err)
+
+const HeightmapThreeJS = require('./isl-three.co')
+
 const PI2 = Math.PI * 2
+
 
 rand = (a, b) -> a + Math.random() * (b - a)
 
@@ -102,7 +112,7 @@ closestPointOnSegment = (p, v, w) ->
 
 
 poly2clipper = (poly) ->
-	subj_polygon = new ClipperLib.Polygon()
+	subj_polygon = new ClipperLib.Path()
 	for [x, y] of poly
 		subj_polygon.push new ClipperLib.IntPoint(x, y)
 	return subj_polygon
@@ -110,15 +120,15 @@ poly2clipper = (poly) ->
 clipper2poly = (clipper) -> for (clipper || []) => [&X, &Y]
 
 poly_op = (polys1, polys2, clipType) ->
-	subj_polygons = new ClipperLib.Polygons()
+	subj_polygons = new ClipperLib.Paths()
 	for polys1 => subj_polygons.push poly2clipper(&)
-	clip_polygons = new ClipperLib.Polygons()
+	clip_polygons = new ClipperLib.Paths()
 	for polys2 => clip_polygons.push poly2clipper(&)
 
 	clipper = new ClipperLib.Clipper()
-	clipper.AddPolygons subj_polygons, ClipperLib.PolyType.ptSubject
-	clipper.AddPolygons clip_polygons, ClipperLib.PolyType.ptClip
-	solution_polygons = new ClipperLib.Polygons()
+	clipper.AddPaths subj_polygons, ClipperLib.PolyType.ptSubject, true
+	clipper.AddPaths clip_polygons, ClipperLib.PolyType.ptClip, true
+	solution_polygons = new ClipperLib.Paths()
 	fillType = ClipperLib.PolyFillType.pftPositive
 	if not clipper.Execute(clipType, solution_polygons, fillType, fillType) then
 		console.log "No success."
@@ -134,12 +144,14 @@ merge = (polys) ->
 cut = (polys1, polys2) -> poly_op(polys1, polys2, ClipperLib.ClipType.ctDifference)
 
 outsetPoly = (poly, delta) ->
-	cpr = new ClipperLib.Clipper()
 	joinType = ClipperLib.JoinType.jtMiter
 	miterLimit = 0
-	offsetPolygons = cpr.OffsetPolygons([poly2clipper(poly)], delta, joinType, miterLimit, true)
-	cleanedPolygons = ClipperLib.Clean(offsetPolygons, 2.5)
-	return (for cleanedPolygons => clipper2poly(&))
+	clipperOffset = new ClipperLib.ClipperOffset(miterLimit, 0)
+	clipperOffset.AddPaths([poly2clipper(poly)], joinType, ClipperLib.EndType.etClosedPolygon)
+	solution = new ClipperLib.Paths()
+	clipperOffset.Execute(solution, delta)
+	cleanedPaths = ClipperLib.JS.Clean(solution, 2.5)
+	return (for cleanedPaths => clipper2poly(&))
 
 makeRotator = (a) ->
 	c = Math.cos(a)
@@ -520,7 +532,7 @@ class IslandGenerator
 		console.log "generated in #{@genTime} ms"
 
 makeUI = !(ig) ->
-	debouncedGenerate = _.debounce((->ig.regenerateAndDraw()), 50)
+	debouncedGenerate = debounce((->ig.regenerateAndDraw()), 50)
 	gui = new dat.GUI()
 	for group of IslandGenerator.PARAMS.groups
 		if group.name

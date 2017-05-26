@@ -9,8 +9,13 @@
     "babel-core": "^6.24.1",
     "babel-loader": "^7.0.0",
     "babel-preset-env": "^1.5.1",
+    "clipper-lib": "^6.2.1",
     "coco": "^0.9.1",
+    "dat.gui": "^0.6.1",
     "loader-utils": "^1.1.0",
+    "lodash": "^4.17.4",
+    "svg.filter.js": "^2.0.2",
+    "three": "^0.85.2",
     "webpack": "^2.6.1"
   },
   "devDependencies": {
