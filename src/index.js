@@ -1,2 +1,2 @@
-const {main} = require('./isl.co');
+import {main} from './island-generator-ui';
 main();
