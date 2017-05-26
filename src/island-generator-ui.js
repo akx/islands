@@ -1,4 +1,3 @@
-/* eslint-env browser */
 import debounce from 'lodash/debounce';
 import dat from 'dat.gui/build/dat.gui';
 import HeightmapThreeJS from './HeightmapThreeJS';
@@ -35,37 +34,41 @@ function makeUI(ig) {
     });
   });
   ig.gui = gui;
-}
-
-function makeButton(text, handler) {
-  const button = document.createElement('button');
-  button.innerHTML = text;
-  button.addEventListener('click', handler, false);
-  document.body.appendChild(button);
-  return button;
+  return gui;
 }
 
 export default function main() {
-  const ig = new IslandGenerator('dkkkhurf a der3');
-  window.ig = ig;
-  makeUI(ig);
-  ig.regenerateAndDraw();
-  function generateHeightMap() {
-    const hmg = new HeightmapGenerator(ig, 256, 256);
-    hmg.startGenerate();
-    function stepGeneration() {
-      if (hmg.generateNextLine()) {
-        setTimeout(stepGeneration, 1);
+  const islandGenerator = new IslandGenerator('dkkkhurf a der3');
+  const gui = makeUI(islandGenerator);
+  islandGenerator.regenerateAndDraw();
+  let heightmapGenerator = null;
+  let heightmapDone = false;
+  const actions = {
+    generateHeightmap() {
+      heightmapGenerator = new HeightmapGenerator(islandGenerator, 256, 256);
+      heightmapGenerator.startGenerate();
+      heightmapDone = false;
+      function stepGeneration() {
+        if (heightmapGenerator.generateNextLine()) {
+          setTimeout(stepGeneration, 1);
+        } else {
+          heightmapDone = true;
+        }
       }
-    }
-    stepGeneration();
-    function enableWebGL() {
-      const th = new HeightmapThreeJS(hmg);
+
+      stepGeneration();
+    },
+    renderHeightmap() {
+      if (!heightmapDone) {
+        alert('The heightmap must be generated first.');  // eslint-disable-line
+        return;
+      }
+      const th = new HeightmapThreeJS(heightmapGenerator);
       setInterval(() => th.render(), 1000 / 40.0);
       th.updateMesh();
-    }
-    makeButton('WebGL', enableWebGL);
-  }
-  makeButton('Generate Heightmap', generateHeightMap);
-  document.body.appendChild(document.createElement('br'));
+    },
+  };
+  gui.add(actions, 'generateHeightmap');
+  gui.add(actions, 'renderHeightmap');
+  return islandGenerator;
 }

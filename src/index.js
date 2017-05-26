@@ -1,3 +1,4 @@
+/* eslint-env browser */
 import main from './island-generator-ui';
 
-main();
+window.islandGenerator = main();
