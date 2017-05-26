@@ -1,9 +1,9 @@
 const ClipperLib = require('clipper-lib');
 const SVG = require('svg.js');
-require('svg.filter.js');
-const {RandomFarm} = require('./rand.js');
-const {ParamCollection, BoolParam, StringParam, IntParam, FloatParam} = require('./params.js');
-const Gradient = require('./Gradient.co');
+import {RandomFarm} from './rand';
+import {ParamCollection, BoolParam, StringParam, IntParam, FloatParam} from './params';
+import drawIslandSVG from './drawIslandSVG';
+
 const PI2 = Math.PI * 2;
 
 const poly2clipper = (poly) => {
@@ -234,60 +234,22 @@ class IslandGenerator {
     return this.genTime = ((+new Date()) - time);
   }
 
-  getColorMap() {
-    const colorMap = new Gradient();
-    if (this.params.bwColorMap) {
-      colorMap.addPoint('#222222', 0);
-      colorMap.addPoint('#ffffff', 1);
-    } else {
-      colorMap.addPoint('#94bf8b', 0);
-      colorMap.addPoint('#acd0a5', 0.2);
-      colorMap.addPoint('#bdcc96', 0.5);
-      colorMap.addPoint('#efebc0', 0.8);
-      colorMap.addPoint('#cab982', 0.99);
-      colorMap.addPoint('#cab982', 1.0);
-    }
-    return colorMap;
-  }
-
-
   draw() {
-    let svg;
-    if (!(svg = this.svg)) {
-      this.svg = svg = SVG(document.body);
+    if(!this.svg) {
+      this.svg = SVG(document.body);
     }
-
-    svg.size(this.width, this.height).clear();
-
-    const background = (this.params.bwColorMap ? '#000000' : '#53BEFF');
-    svg.rect(this.width, this.height).fill(background);
-    const colorMap = this.getColorMap();
-    const blur = this.params.blurContours;
-    //maxHeight = Math.max.apply(null, (for layers => &height))
-    this.layers.forEach((layer) => {
-      const cOffset = layer.height / this.maxHeight;
-      const color = colorMap.getColor(cOffset);
-      const outline = (layer.height == 0 ? 'black' : 'rgba(0,0,0,0.2)');
-      const poly = svg.polygon(layer).fill(color);
-      if (this.params.contourOutlines) {
-        poly.stroke({width: 1, color: outline})
+    this.svg.size(this.width, this.height).clear();
+    drawIslandSVG(
+      this.svg,
+      this,
+      {
+        monochrome: !!this.params.bwColorMap,
+        blur: this.params.blurContours,
+        isletOutlines: !!this.params.isletOutlines,
+        contourOutlines: !!this.params.contourOutlines,
       }
-      if (blur) {
-        poly.filter((p) => p.gaussianBlur(blur));
-      }
-
-      //poly.node.setAttribute("terr-height", layer.height)
-      //poly.node.setAttribute("terr-coff", cOffset)
-
-      if (this.params.isletOutlines) {
-        this.islets.forEach((islet) => {
-          const color = (islet.negative ? 'red' : 'white');
-          svg.polygon(islet).stroke({width: 1, color}).fill('none')
-        });
-      }
-    });
+    );
   }
-
 
   regenerateAndDraw() {
     this.generate();
