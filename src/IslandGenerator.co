@@ -2,7 +2,7 @@ const ClipperLib = require('clipper-lib')
 const SVG = require('svg.js')
 require('svg.filter.js')
 const {RandomFarm} = require('./rand.js')
-const {ParamCollection, BoolParam, StringParam, IntParam, FloatParam} = require('./params.co')
+const {ParamCollection, BoolParam, StringParam, IntParam, FloatParam} = require('./params.js')
 const Gradient = require('./Gradient.co')
 
 const PI2 = Math.PI * 2
