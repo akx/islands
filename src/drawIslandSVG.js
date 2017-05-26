@@ -1,6 +1,7 @@
+import Gradient from './Gradient';
+
 const SVG = require('svg.js');  // eslint-disable-line
 require('svg.filter.js');
-import Gradient from './Gradient';
 
 const bwColorMap = new Gradient();
 bwColorMap.addPoint('#222222', 0);
@@ -21,8 +22,8 @@ const defaults = {
 };
 
 export default function (svg, generator, options = {}) {
-  const {monochrome, isletOutlines, contourOutlines, blur} = Object.assign({}, defaults, options);
-  const {width, height} = generator;
+  const { monochrome, isletOutlines, contourOutlines, blur } = Object.assign({}, defaults, options);
+  const { width, height } = generator;
   const background = (monochrome ? '#000000' : '#53BEFF');
   svg.rect(width, height).fill(background);
   const colorMap = (monochrome ? bwColorMap : topoColorMap);
@@ -30,23 +31,23 @@ export default function (svg, generator, options = {}) {
   generator.layers.forEach((layer) => {
     const cOffset = layer.height / maxHeight;
     const color = colorMap.getColor(cOffset);
-    const outline = (layer.height == 0 ? 'black' : 'rgba(0,0,0,0.2)');
+    const outline = (layer.height === 0 ? 'black' : 'rgba(0,0,0,0.2)');
     const poly = svg.polygon(layer).fill(color);
     if (contourOutlines) {
-      poly.stroke({width: 1, color: outline})
+      poly.stroke({ width: 1, color: outline });
     }
     if (blur) {
       poly.filter((p) => p.gaussianBlur(blur));
     }
 
-    //poly.node.setAttribute("terr-height", layer.height)
-    //poly.node.setAttribute("terr-coff", cOffset)
+    // poly.node.setAttribute("terr-height", layer.height)
+    // poly.node.setAttribute("terr-coff", cOffset)
   });
 
   if (isletOutlines) {
     generator.islets.forEach((islet) => {
       const color = (islet.negative ? 'red' : 'white');
-      svg.polygon(islet).stroke({width: 1, color}).fill('none');
+      svg.polygon(islet).stroke({ width: 1, color }).fill('none');
     });
   }
   return svg;

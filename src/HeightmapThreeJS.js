@@ -1,4 +1,5 @@
-import 'three/src/polyfills.js';
+/* eslint-env browser */
+import 'three/src/polyfills';
 import { AxisHelper } from 'three/src/helpers/AxisHelper';
 import { Color } from 'three/src/math/Color';
 import { Mesh } from 'three/src/objects/Mesh';
@@ -11,15 +12,15 @@ import { Scene } from 'three/src/scenes/Scene';
 import { VertexColors } from 'three/src/constants';
 import { WebGLRenderer } from 'three/src/renderers/WebGLRenderer';
 
-const clampColor = function (a) {
+function clampColor(a) {
   if (a < 0) {
     return 0;
   }
   if (a >= 255) {
     return 255;
   }
-  return 0 | a;
-};
+  return Math.round(a);
+}
 
 class ThreePlaneWrapper {
   constructor(heightmap, resX, resY, heightScale = 1) {
@@ -35,8 +36,8 @@ class ThreePlaneWrapper {
     y /= this.resY;
     x *= this.heightmap.mapWidth;
     y *= this.heightmap.mapHeight;
-    x = 0 | x;
-    y = 0 | y;
+    x = Math.floor(x);
+    y = Math.floor(y);
     if (x < 0 || x > this.heightmap.mapWidth) {
       return -1;
     }
@@ -59,19 +60,18 @@ class ThreePlaneWrapper {
       }
     }
     let max = 0;
-    const {vertices, faces} = this.geometry;
+    const { vertices, faces } = this.geometry;
     vertices.forEach((vertex) => {
       if (vertex.z > max) max = vertex.z;
     });
 
     const faceIndices = ['a', 'b', 'c'];
     faces.forEach((face) => {
-      let r, g, b;
       for (let vi = 0; vi < 3; ++vi) {
-        let v = vertices[face[faceIndices[vi]]];
-        let height = v.z / max;
-        r = g = b = 0 | 255 * height;
-        face.vertexColors[vi] = new Color(clampColor(r) << 16 | clampColor(g) << 8 | clampColor(b));
+        const v = vertices[face[faceIndices[vi]]];
+        const height = v.z / max;
+        const val = clampColor(Math.round(height * 255));
+        face.vertexColors[vi] = new Color((val << 16) | (val << 8) | val); // eslint-disable-line
       }
     });
     this.geometry.computeFaceNormals();
@@ -82,27 +82,29 @@ class ThreePlaneWrapper {
   }
 }
 
-export class HeightmapThreeJS {
+export default class HeightmapThreeJS {
   constructor(heightmap, width = 640, height = 480) {
     this.heightmap = heightmap;
     const viewAngle = 60;
     const aspect = width / height;
-    const renderer = this.renderer = new WebGLRenderer({antialias: true});
+    const renderer = new WebGLRenderer({ antialias: true });
     renderer.setClearColor(0xFFFFFF);
     renderer.setSize(width, height);
+    this.renderer = renderer;
     document.body.appendChild(renderer.domElement);
     this.camera = new PerspectiveCamera(viewAngle, aspect, 0.1, 1000);
     this.pointLight = new PointLight(0xFFFFFF);
     this.sea = new Mesh(
       new PlaneGeometry(100, 100, 3, 3),
-      new MeshLambertMaterial({color: 0x53BEFF})
+      new MeshLambertMaterial({ color: 0x53BEFF }),
     );
     this.sea.rotation.x = Math.PI * -0.5;
-    const scene = this.scene = new Scene();
+    const scene = new Scene();
     scene.add(this.camera);
     scene.add(this.pointLight);
     scene.add(this.sea);
     scene.add(new AxisHelper(10));
+    this.scene = scene;
   }
 
   updateMesh() {

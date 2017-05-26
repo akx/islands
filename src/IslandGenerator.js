@@ -1,66 +1,61 @@
-const ClipperLib = require('clipper-lib');
-const SVG = require('svg.js');
-import {RandomFarm} from './rand';
-import {ParamCollection, BoolParam, StringParam, IntParam, FloatParam} from './params';
+import ClipperLib from 'clipper-lib';
+import SVG from 'svg.js';
+import { RandomFarm } from './rand';
+import { ParamCollection, BoolParam, StringParam, IntParam, FloatParam } from './params';
 import drawIslandSVG from './drawIslandSVG';
 
 const PI2 = Math.PI * 2;
 
-const poly2clipper = (poly) => {
+const convertPolyToClipper = (poly) => {
   const clipperPath = new ClipperLib.Path();
   poly.forEach(([x, y]) => clipperPath.push(new ClipperLib.IntPoint(x, y)));
   return clipperPath;
 };
 
-const clipper2poly = (clipper) => {
-  return Array.from(clipper).map((point) => [point.X, point.Y]);
-};
+const convertClipperToPoly = (clipper) => Array.from(clipper).map((point) => [point.X, point.Y]);
 
-function poly_op(polys1, polys2, clipType) {
-  const subj_polygons = new ClipperLib.Paths();
-  const clip_polygons = new ClipperLib.Paths();
-  polys1.forEach((poly) => subj_polygons.push(poly2clipper(poly)));
-  polys2.forEach((poly) => clip_polygons.push(poly2clipper(poly)));
-
+function runPolyOperation(polys1, polys2, clipType) {
+  const subjectPolygons = new ClipperLib.Paths();
+  const clipPolygons = new ClipperLib.Paths();
+  polys1.forEach((poly) => subjectPolygons.push(convertPolyToClipper(poly)));
+  polys2.forEach((poly) => clipPolygons.push(convertPolyToClipper(poly)));
   const clipper = new ClipperLib.Clipper();
-  clipper.AddPaths(subj_polygons, ClipperLib.PolyType.ptSubject, true);
-  clipper.AddPaths(clip_polygons, ClipperLib.PolyType.ptClip, true);
-  const solution_polygons = new ClipperLib.Paths();
+  clipper.AddPaths(subjectPolygons, ClipperLib.PolyType.ptSubject, true);
+  clipper.AddPaths(clipPolygons, ClipperLib.PolyType.ptClip, true);
+  const solution = new ClipperLib.Paths();
   const fillType = ClipperLib.PolyFillType.pftPositive;
-  if (!clipper.Execute(clipType, solution_polygons, fillType, fillType)) {
-    console.log("No success.");
+  if (!clipper.Execute(clipType, solution, fillType, fillType)) {
+    console.log('No success.');
     return [];
   }
-  return Array.from(solution_polygons).map(clipper2poly);
+  return Array.from(solution).map(convertClipperToPoly);
 }
 
 function merge(polys) {
   const polys2 = [].concat(polys);
   const polys1 = [polys2.shift()];
-  return poly_op(polys1, polys2, ClipperLib.ClipType.ctUnion);
+  return runPolyOperation(polys1, polys2, ClipperLib.ClipType.ctUnion);
 }
 
 function cut(polys1, polys2) {
-  return poly_op(polys1, polys2, ClipperLib.ClipType.ctDifference);
+  return runPolyOperation(polys1, polys2, ClipperLib.ClipType.ctDifference);
 }
 
 function outsetPoly(poly, delta) {
   const joinType = ClipperLib.JoinType.jtMiter;
   const miterLimit = 0;
   const clipperOffset = new ClipperLib.ClipperOffset(miterLimit, 0);
-  clipperOffset.AddPaths([poly2clipper(poly)], joinType, ClipperLib.EndType.etClosedPolygon);
+  clipperOffset.AddPaths([convertPolyToClipper(poly)], joinType, ClipperLib.EndType.etClosedPolygon);
   const solution = new ClipperLib.Paths();
   clipperOffset.Execute(solution, delta);
   const cleanedPaths = ClipperLib.JS.Clean(solution, 2.5);
-  return Array.from(cleanedPaths).map(clipper2poly);
+  return Array.from(cleanedPaths).map(convertClipperToPoly);
 }
 
 function makeRotator(a) {
   const c = Math.cos(a);
   const s = Math.sin(a);
-  return function (x, y) {
-    return [x * c - y * s, x * s + y * c];
-  };
+  return (x, y) => [x * c - y * s, x * s + y * c];
 }
 
 function jitterPoly(rng, poly, ix, iy) {
@@ -76,40 +71,40 @@ function offsetPoly(poly, ix, iy) {
 
 const IslandGeneratorParams = new ParamCollection();
 IslandGeneratorParams.group(null, [
-  StringParam("seed", "" + (+new Date())),
-  IntParam("size", 600, 0, 2048)
+  StringParam('seed', `${+new Date()}`),
+  IntParam('size', 600, 0, 2048),
 ]);
-IslandGeneratorParams.group("Drawing", [
-  BoolParam("isletOutlines", false),
-  BoolParam("contourOutlines", true),
-  BoolParam("bwColorMap", false),
-  IntParam("blurContours", 0, 0, 20),
+IslandGeneratorParams.group('Drawing', [
+  BoolParam('isletOutlines', false),
+  BoolParam('contourOutlines', true),
+  BoolParam('bwColorMap', false),
+  IntParam('blurContours', 0, 0, 20),
 ]);
-IslandGeneratorParams.group("Islets", [
-  IntParam("isletMinN", 2),
-  IntParam("isletMaxN", 15),
-  FloatParam("isletSpread", 0.3),
-  FloatParam("isletMinRadius", 0.1),
-  FloatParam("isletMaxRadius", 0.3),
-  IntParam("isletMinPoints", 7),
-  IntParam("isletMaxPoints", 25),
-  FloatParam("isletJagginess", 0.2),
-  BoolParam("isletSeparateRadii", true),
-  FloatParam("isletMinAspect", 0.9, 0, 2),
-  FloatParam("isletMaxAspect", 1.1, 0, 2),
-  FloatParam("isletMinAngle", -0.3, -1, 1),
-  FloatParam("isletMaxAngle", +0.3, -1, 1),
-  FloatParam("isletNegativeChance", 0.05),
+IslandGeneratorParams.group('Islets', [
+  IntParam('isletMinN', 2),
+  IntParam('isletMaxN', 15),
+  FloatParam('isletSpread', 0.3),
+  FloatParam('isletMinRadius', 0.1),
+  FloatParam('isletMaxRadius', 0.3),
+  IntParam('isletMinPoints', 7),
+  IntParam('isletMaxPoints', 25),
+  FloatParam('isletJagginess', 0.2),
+  BoolParam('isletSeparateRadii', true),
+  FloatParam('isletMinAspect', 0.9, 0, 2),
+  FloatParam('isletMaxAspect', 1.1, 0, 2),
+  FloatParam('isletMinAngle', -0.3, -1, 1),
+  FloatParam('isletMaxAngle', +0.3, -1, 1),
+  FloatParam('isletNegativeChance', 0.05),
 ]);
-IslandGeneratorParams.group("Layers", [
-  IntParam("islandInitialOutset", 0, -15, +15),
-  IntParam("minHeightIncrease", 5),
-  IntParam("maxHeightIncrease", 50),
-  FloatParam("minHeightInsetRatio", 0.9, 0, 2),
-  FloatParam("maxHeightInsetRatio", 1.1, 0, 2),
-  IntParam("minLayerJitter", 2),
-  IntParam("maxLayerJitter", 5),
-  IntParam("layerOffsetSize", 5),
+IslandGeneratorParams.group('Layers', [
+  IntParam('islandInitialOutset', 0, -15, +15),
+  IntParam('minHeightIncrease', 5),
+  IntParam('maxHeightIncrease', 50),
+  FloatParam('minHeightInsetRatio', 0.9, 0, 2),
+  FloatParam('maxHeightInsetRatio', 1.1, 0, 2),
+  IntParam('minLayerJitter', 2),
+  IntParam('maxLayerJitter', 5),
+  IntParam('layerOffsetSize', 5),
 ]);
 
 
@@ -141,13 +136,15 @@ class IslandGenerator {
       let xRadius = rng.uniform(minRadius, maxRadius);
       let yRadius = rng.uniform(minRadius, maxRadius);
       if (!this.params.isletSeparateRadii) {
-        xRadius = yRadius = (xRadius + yRadius) * 0.5;
+        const radius = (xRadius + yRadius) * 0.5;
+        xRadius = radius;
+        yRadius = radius;
       }
       xRadius /= aspect;
       yRadius *= aspect;
       const [x, y] = rotate(
         Math.cos(i * PI2) * xRadius,
-        Math.sin(i * PI2) * yRadius
+        Math.sin(i * PI2) * yRadius,
       );
       points.push([cx + x, cy + y]);
     }
@@ -180,7 +177,7 @@ class IslandGenerator {
     while (openLayers.length) {
       const layer = openLayers.shift();
       if (rng.uniform(0, 1) < 0.05) { // Chance to skip
-        console.log("skipping layer");
+        console.log('skipping layer');
         continue;
       }
 
@@ -205,9 +202,8 @@ class IslandGenerator {
         });
         openLayers = openLayers.concat(newLayers);
         layers = layers.concat(newLayers);
-      }
-      else {
-        console.log("no new layers");
+      } else {
+        console.log('no new layers');
       }
     }
 
@@ -217,26 +213,29 @@ class IslandGenerator {
   generateIslets(isletRng) {
     const nIslets = isletRng.uniformInt(this.params.isletMinN, this.params.isletMaxN);
     const islets = [];
-    for (var i = 0; i < nIslets; i++) {
+    for (let i = 0; i < nIslets; i++) {
       islets.push(this.generateIslet(isletRng));
     }
     return islets;
   }
 
   generate() {
-    this.width = this.height = 0 | (this.params.size);
+    const size = Math.floor(this.params.size);
+    this.width = size;
+    this.height = size;
     const time = +new Date();
     this.rngFarm = new RandomFarm(this.params.seed);
-    const isletRng = this.rngFarm.get("islet");
-    const layerRng = this.rngFarm.get("layer");
+    const isletRng = this.rngFarm.get('islet');
+    const layerRng = this.rngFarm.get('layer');
     this.islets = this.generateIslets(isletRng);
     this.layers = this.convertIsletsToLayers(layerRng, this.islets);
-    return this.genTime = ((+new Date()) - time);
+    this.genTime = ((+new Date()) - time);
+    return this.genTime;
   }
 
   draw() {
-    if(!this.svg) {
-      this.svg = SVG(document.body);
+    if (!this.svg) {
+      this.svg = SVG(document.body); // eslint-disable-line
     }
     this.svg.size(this.width, this.height).clear();
     drawIslandSVG(
@@ -247,7 +246,7 @@ class IslandGenerator {
         blur: this.params.blurContours,
         isletOutlines: !!this.params.isletOutlines,
         contourOutlines: !!this.params.contourOutlines,
-      }
+      },
     );
   }
 

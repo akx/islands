@@ -1,6 +1,7 @@
+/* eslint-env browser */
 import debounce from 'lodash/debounce';
 import dat from 'dat.gui/build/dat.gui';
-import {HeightmapThreeJS} from './HeightmapThreeJS';
+import HeightmapThreeJS from './HeightmapThreeJS';
 import IslandGenerator from './IslandGenerator';
 import HeightmapGenerator from './HeightmapGenerator';
 
@@ -27,6 +28,8 @@ function makeUI(ig) {
         case 'string':
           guiParam = folder.add(ig.params, param.name);
           break;
+        default:
+          throw new Error('unsupported param type');
       }
       guiParam.onChange(debouncedGenerate);
     });
@@ -42,26 +45,27 @@ function makeButton(text, handler) {
   return button;
 }
 
-export function main() {
-  const ig = window.ig = new IslandGenerator("dkkkhurf a der3");
+export default function main() {
+  const ig = new IslandGenerator('dkkkhurf a der3');
+  window.ig = ig;
   makeUI(ig);
   ig.regenerateAndDraw();
-  const generateHeightMap = function () {
+  function generateHeightMap() {
     const hmg = new HeightmapGenerator(ig, 256, 256);
     hmg.startGenerate();
-    const stepGeneration = function () {
+    function stepGeneration() {
       if (hmg.generateNextLine()) {
         setTimeout(stepGeneration, 1);
       }
-    };
+    }
     stepGeneration();
-    const enableWebGL = function () {
+    function enableWebGL() {
       const th = new HeightmapThreeJS(hmg);
       setInterval(() => th.render(), 1000 / 40.0);
       th.updateMesh();
-    };
-    makeButton("WebGL", enableWebGL);
-  };
-  makeButton("Generate Heightmap", generateHeightMap);
-  document.body.appendChild(document.createElement("br"));
+    }
+    makeButton('WebGL', enableWebGL);
+  }
+  makeButton('Generate Heightmap', generateHeightMap);
+  document.body.appendChild(document.createElement('br'));
 }

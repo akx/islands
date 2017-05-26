@@ -1,3 +1,4 @@
+/* eslint-disable no-bitwise, no-underscore-dangle, no-restricted-properties */
 export class RC4Rand {
   constructor(seed = null) {
     this.s = new Array(256).fill(0).map((x, i) => i);
@@ -28,14 +29,14 @@ export class RC4Rand {
     this.i = (this.i + 1) % 256;
     this.j = (this.j + this.s[this.i]) % 256;
     this._swap(this.i, this.j);
-    return this.s[(this.s[this.i] + this.s[this.j]) % 256]
+    return this.s[(this.s[this.i] + this.s[this.j]) % 256];
   }
 
   nextFloat() {
     const BYTES = 7;
     let output = 0;
     for (let i = 0; i < BYTES; i++) {
-      output = output * 256 + this.nextByte()
+      output = output * 256 + this.nextByte();
     }
     return output / (Math.pow(2, BYTES * 8) - 1);
   }
@@ -50,7 +51,7 @@ export class RC4Rand {
   }
 
   uniformInt(a, b) {
-    return Math.floor(this.uniform(a, b))
+    return Math.floor(this.uniform(a, b));
   }
 }
 

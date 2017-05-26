@@ -1,24 +1,15 @@
 module.exports = {
-  "env": {
-    "browser": true,
-    "commonjs": true,
-    "es6": true
-  },
-  "extends": "eslint:recommended",
-  "parserOptions": {
-    "sourceType": "module"
-  },
+  "extends": "airbnb-base",
+  "plugins": [
+    "import",
+  ],
   "rules": {
-    "indent": "off",
-    "linebreak-style": "off",
-    "quotes": "off",
-    "semi": "off",
-    "no-unused-vars": [
-      "error", {
-        "varsIgnorePattern": "constructor|prototype",
-      },
-    ],
+    "no-mixed-operators": "off",
+    "max-len": "off",
+    "no-plusplus": "off",
+    "no-param-reassign": "off",
     "no-console": "off",
-    "no-cond-assign": "off",
+    "no-continue": "off",
+    "arrow-parens": ["error", "always"],
   },
 };

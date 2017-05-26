@@ -16,6 +16,7 @@
     "lodash": "^4.17.4",
     "raw-loader": "^0.5.1",
     "svg.filter.js": "^2.0.2",
+    "svg.js": "^2.6.1",
     "three": "^0.85.2",
     "webpack": "^2.6.1"
   },
