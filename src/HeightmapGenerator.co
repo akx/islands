@@ -1,5 +1,5 @@
-const {lerp, closestPointOnSegment, getSquaredDistance, getDistance} = require('./util.co')
-const {rand} = require('./rand.co')
+const {lerp, closestPointOnSegment, getSquaredDistance, getDistance} = require('./util')
+const {rand} = require('./rand.js')
 
 class HeightmapGenerator
 	(@ig, @mapWidth, @mapHeight) ->
