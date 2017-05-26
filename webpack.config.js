@@ -22,11 +22,14 @@ module.exports = {
         test: /.js$/,
         use: {
           loader: 'babel-loader',
-          options: {
-            presets: ['env'],
-          },
         },
         exclude: /node_modules/,
+      },
+      {
+        test: /.glsl$/,
+        use: {
+          loader: 'raw-loader',
+        },
       },
     ],
   },

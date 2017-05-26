@@ -2,7 +2,7 @@ const debounce = require('lodash/debounce')
 const dat = require('dat.gui/build/dat.gui.js')
 
 const HeightmapGenerator = require('./HeightmapGenerator.co')
-const HeightmapThreeJS = require('./HeightmapThreeJS.co')
+const {HeightmapThreeJS} = require('./HeightmapThreeJS')
 const IslandGenerator = require('./IslandGenerator.co')
 
 makeUI = !(ig) ->
