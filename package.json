@@ -24,10 +24,12 @@
     "eslint": "^3.19.0",
     "eslint-config-airbnb-base": "^11.2.0",
     "eslint-plugin-import": "^2.3.0",
+    "gh-pages": "^1.0.0",
     "webpack-dev-server": "^2.4.5"
   },
   "scripts": {
     "dev": "webpack-dev-server --open --progress --devtool=cheap-module-source-map",
-    "build": "webpack -p --progress"
+    "build": "webpack -p --progress",
+    "deploy": "echo gh-pages -d dist -r ssh://git@github.com/akx/islands.git -m $(git rev-parse master)"
   }
 }

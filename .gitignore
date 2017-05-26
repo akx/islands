@@ -1,5 +1,3 @@
 .idea
-/_all.js
-/islc.html
-dist
+dist/bundle.js
 node_modules
