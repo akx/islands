@@ -1,7 +1,6 @@
 const SVG = require('svg.js');  // eslint-disable-line
 require('svg.filter.js');
-
-const Gradient = require('./Gradient.co');
+import Gradient from './Gradient';
 
 const bwColorMap = new Gradient();
 bwColorMap.addPoint('#222222', 0);
