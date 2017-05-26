@@ -1,2 +1,5 @@
+.idea
 /_all.js
 /islc.html
+dist
+node_modules

@@ -1,0 +1,19 @@
+{
+  "name": "islands",
+  "version": "0.0.1",
+  "main": "index.js",
+  "repository": "https://github.com/akx/islands",
+  "author": "Aarni Koskela <akx@iki.fi>",
+  "license": "MIT",
+  "dependencies": {
+    "babel-core": "^6.24.1",
+    "babel-loader": "^7.0.0",
+    "babel-preset-env": "^1.5.1",
+    "coco": "^0.9.1",
+    "loader-utils": "^1.1.0",
+    "webpack": "^2.6.1"
+  },
+  "devDependencies": {
+    "webpack-dev-server": "^2.4.5"
+  }
+}
