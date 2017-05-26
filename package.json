@@ -10,7 +10,6 @@
     "babel-loader": "^7.0.0",
     "babel-preset-env": "^1.5.1",
     "clipper-lib": "^6.2.1",
-    "coco": "^0.9.1",
     "dat.gui": "^0.6.1",
     "eslint-loader": "^1.7.1",
     "loader-utils": "^1.1.0",

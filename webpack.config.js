@@ -7,18 +7,6 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /.co?$/,
-        use: [
-          {
-            loader: 'eslint-loader',
-          },
-          {
-            loader: require.resolve('./coco-loader'),
-          }
-        ],
-        exclude: /node_modules/,
-      },
-      {
         test: /.js$/,
         use: [
           {
