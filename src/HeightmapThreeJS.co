@@ -61,7 +61,7 @@ class HeightmapThreeJS
 			&setClearColor(0xFFFFFF)
 			&setSize(WIDTH, HEIGHT)
 			document.body.appendChild(&domElement)
-		@camera = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 0.1, 1000)
+		@camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, 0.1, 1000)
 		@pointLight = new THREE.PointLight(0xFFFFFF)
 		@sea = new THREE.Mesh(
 			new THREE.PlaneGeometry(100, 100, 3, 3),

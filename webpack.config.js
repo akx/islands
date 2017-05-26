@@ -8,9 +8,14 @@ module.exports = {
     rules: [
       {
         test: /.co?$/,
-        use: {
-          loader: require.resolve('./coco-loader'),
-        },
+        use: [
+          {
+            loader: 'eslint-loader',
+          },
+          {
+            loader: require.resolve('./coco-loader'),
+          }
+        ],
         exclude: /node_modules/,
       },
       {

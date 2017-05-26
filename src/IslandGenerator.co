@@ -1,0 +1,244 @@
+const ClipperLib = require('clipper-lib')
+const SVG = require('svg.js')
+require('svg.filter.js')
+const {RandomFarm} = require('./rand.co')
+const {ParamCollection, BoolParam, StringParam, IntParam, FloatParam} = require('./params.co')
+const Gradient = require('./Gradient.co')
+
+const PI2 = Math.PI * 2
+
+poly2clipper = (poly) ->
+	subj_polygon = new ClipperLib.Path()
+	for [x, y] of poly
+		subj_polygon.push new ClipperLib.IntPoint(x, y)
+	return subj_polygon
+
+clipper2poly = (clipper) -> for (clipper || []) => [&X, &Y]
+
+poly_op = (polys1, polys2, clipType) ->
+	subj_polygons = new ClipperLib.Paths()
+	for polys1 => subj_polygons.push poly2clipper(&)
+	clip_polygons = new ClipperLib.Paths()
+	for polys2 => clip_polygons.push poly2clipper(&)
+
+	clipper = new ClipperLib.Clipper()
+	clipper.AddPaths subj_polygons, ClipperLib.PolyType.ptSubject, true
+	clipper.AddPaths clip_polygons, ClipperLib.PolyType.ptClip, true
+	solution_polygons = new ClipperLib.Paths()
+	fillType = ClipperLib.PolyFillType.pftPositive
+	if not clipper.Execute(clipType, solution_polygons, fillType, fillType) then
+		console.log "No success."
+		return []
+	else
+		return (for solution_polygons => clipper2poly(&))
+
+merge = (polys) ->
+	polys2 = [].concat(polys)
+	polys1 = [polys2.shift()]
+	return poly_op(polys1, polys2, ClipperLib.ClipType.ctUnion)
+
+cut = (polys1, polys2) -> poly_op(polys1, polys2, ClipperLib.ClipType.ctDifference)
+
+outsetPoly = (poly, delta) ->
+	joinType = ClipperLib.JoinType.jtMiter
+	miterLimit = 0
+	clipperOffset = new ClipperLib.ClipperOffset(miterLimit, 0)
+	clipperOffset.AddPaths([poly2clipper(poly)], joinType, ClipperLib.EndType.etClosedPolygon)
+	solution = new ClipperLib.Paths()
+	clipperOffset.Execute(solution, delta)
+	cleanedPaths = ClipperLib.JS.Clean(solution, 2.5)
+	return (for cleanedPaths => clipper2poly(&))
+
+makeRotator = (a) ->
+	c = Math.cos(a)
+	s = Math.sin(a)
+	return (x, y) -> [x * c - y * s, x * s + y * c]
+
+
+jitterPoly = (rng, poly, ix, iy) -> for [x, y] of poly => [x + rng.uniform(-ix, ix), y + rng.uniform(-iy, iy)]
+offsetPoly = (poly, ix, iy) -> for [x, y] of poly => [x + ix, y + iy]
+
+
+class IslandGenerator
+	@PARAMS = (
+		new ParamCollection()
+			&group(null, [
+				* StringParam("seed", "" + (+new Date()))
+				* IntParam("size", 600, 0, 2048)
+			])
+			&group("Drawing", [
+				* BoolParam("isletOutlines", false)
+				* BoolParam("contourOutlines", true)
+				* BoolParam("bwColorMap", false)
+				* IntParam("blurContours", 0, 0, 20)
+			])
+			&group("Islets", [
+				* IntParam("isletMinN", 2)
+				* IntParam("isletMaxN", 15)
+				* FloatParam("isletSpread", 0.3)
+				* FloatParam("isletMinRadius", 0.1)
+				* FloatParam("isletMaxRadius", 0.3)
+				* IntParam("isletMinPoints", 7)
+				* IntParam("isletMaxPoints", 25)
+				* FloatParam("isletJagginess", 0.2)
+				* BoolParam("isletSeparateRadii", true)
+				* FloatParam("isletMinAspect", 0.9, 0, 2)
+				* FloatParam("isletMaxAspect", 1.1, 0, 2)
+				* FloatParam("isletMinAngle", -0.3, -1, 1)
+				* FloatParam("isletMaxAngle", +0.3, -1, 1)
+				* FloatParam("isletNegativeChance", 0.05)
+			])
+			&group("Layers", [
+				* IntParam("islandInitialOutset", 0, -15, +15)
+				* IntParam("minHeightIncrease", 5)
+				* IntParam("maxHeightIncrease", 50)
+				* FloatParam("minHeightInsetRatio", 0.9, 0, 2)
+				* FloatParam("maxHeightInsetRatio", 1.1, 0, 2)
+				* IntParam("minLayerJitter", 2)
+				* IntParam("maxLayerJitter", 5)
+				* IntParam("layerOffsetSize", 5)
+			])
+	)
+
+	->
+		@params = IslandGenerator.PARAMS.initialize()
+		@islets = []
+		@layers = []
+
+
+	generateIslet: (rng) ->
+		minMul = 0.5 - @params.isletSpread
+		maxMul = 0.5 + @params.isletSpread
+		cx = rng.uniform(@width * minMul, @width * maxMul)
+		cy = rng.uniform(@height * minMul, @height * maxMul)
+		minSize = Math.min(@width, @height)
+		maxRadius = rng.uniform(minSize * @params.isletMinRadius, minSize * @params.isletMaxRadius)
+		minRadius = maxRadius - maxRadius * @params.isletJagginess
+		nPoints = rng.uniformInt(@params.isletMinPoints, @params.isletMaxPoints)
+		points = []
+		aspect = rng.uniform(@params.isletMinAspect, @params.isletMaxAspect)
+		angle = rng.uniform(@params.isletMinAngle, @params.isletMaxAngle) * PI2
+		rotate = makeRotator(angle)
+
+		for p from 0 til nPoints
+			i = p / nPoints
+			xRadius = rng.uniform(minRadius, maxRadius)
+			yRadius = rng.uniform(minRadius, maxRadius)
+			if not @params.isletSeparateRadii then
+				xRadius = yRadius = (xRadius + yRadius) * 0.5
+			xRadius /= aspect
+			yRadius *= aspect
+			[x, y] = rotate(
+				Math.cos(i * PI2) * xRadius,
+				Math.sin(i * PI2) * yRadius
+			)
+
+			points.push [cx + x, cy + y]
+
+		points.negative = (rng.uniform(0, 1) <= @params.isletNegativeChance)
+
+		return points
+
+	convertIsletsToLayers: (rng, islets) ->
+		layers = []
+		positiveIslets = islets.filter((islet)->!islet.negative)
+		negativeIslets = islets.filter((islet)->islet.negative)
+
+		if negativeIslets.length then
+			islets = cut(positiveIslets, negativeIslets)
+
+		for isletPoly of merge(islets)
+			for layer of outsetPoly(isletPoly, @params.islandInitialOutset)
+				layer.height = 0
+				layers.push(layer)
+
+		openLayers = [].concat(layers)
+		@maxHeight = maxHeight = rng.uniformInt(200, 400)
+
+		while openLayers.length
+			layer = openLayers.shift()
+			if rng.uniform(0, 1) < 0.05 then # Chance to skip
+				console.log "skipping layer"
+				continue
+			if layer.height > maxHeight
+				console.log "maxheight #{maxHeight} reached"
+				break
+			heightIncrease = rng.uniformInt(@params.minHeightIncrease, @params.maxHeightIncrease)
+			offsetValue = rng.uniform(@params.minHeightInsetRatio, @params.maxHeightInsetRatio) * heightIncrease
+			layerJitter = rng.uniform(@params.minLayerJitter, @params.maxLayerJitter)
+
+			newLayers = outsetPoly(layer, -offsetValue)
+			if newLayers.length
+				newLayers = (for newLayer of newLayers
+					layerXOffset = rng.uniform(-@params.layerOffsetSize, @params.layerOffsetSize)
+					layerYOffset = rng.uniform(-@params.layerOffsetSize, @params.layerOffsetSize)
+					newLayer = jitterPoly(rng, newLayer, layerJitter, layerJitter)
+					newLayer = offsetPoly(newLayer, layerXOffset, layerYOffset)
+					newLayer.height = layer.height + heightIncrease
+					newLayer
+				)
+				openLayers = openLayers.concat(newLayers)
+				layers = layers.concat(newLayers)
+			else
+				console.log "no new layers"
+
+		return layers
+
+	generate: ->
+		@width = @height = 0 | (@params.size)
+		time = +new Date()
+		@rngFarm = new RandomFarm(@params.seed)
+
+		isletRng = @rngFarm.get("islet")
+		nIslets = isletRng.uniformInt(@params.isletMinN, @params.isletMaxN)
+		@islets = islets = (@generateIslet(isletRng) for x from 0 til nIslets)
+
+		layerRng = @rngFarm.get("layer")
+		@layers = @convertIsletsToLayers(layerRng, islets)
+		return @genTime = ((+new Date()) - time)
+
+	draw: ->
+		if not svg = @svg then
+			@svg = svg = SVG(document.body)
+
+		svg.size(@width, @height).clear()
+
+
+		if @params.bwColorMap then
+			svg.rect(@width, @height).fill('#000000')
+			colorMap = new Gradient()
+				&addPoint '#222222', 0
+				&addPoint '#ffffff', 1
+		else
+			svg.rect(@width, @height).fill('#53BEFF')
+			colorMap = new Gradient()
+				&addPoint '#94bf8b', 0
+				&addPoint '#acd0a5', 0.2
+				&addPoint '#bdcc96', 0.5
+				&addPoint '#efebc0', 0.8
+				&addPoint '#cab982', 0.99
+				&addPoint '#cab982', 1.0
+
+		#maxHeight = Math.max.apply(null, (for layers => &height))
+
+		for layer of @layers
+			cOffset = layer.height / @maxHeight
+			color = colorMap.getColor(cOffset)
+			outline = (if layer.height == 0 then 'black' else 'rgba(0,0,0,0.2)')
+			poly = svg.polygon(layer).fill(color)
+			if @params.contourOutlines
+				poly.stroke({width: 1, color: outline})
+			if (blur=@params.blurContours)
+				poly.filter -> it.gaussianBlur blur
+			#poly.node.setAttribute("terr-height", layer.height)
+			#poly.node.setAttribute("terr-coff", cOffset)
+
+		if @params.isletOutlines
+			for @islets => svg.polygon(&).stroke({width: 1, color: if &negative then 'red' else 'white'}).fill('none')
+
+	regenerateAndDraw: ->
+		@generate()
+		@draw()
+		console.log "generated in #{@genTime} ms"
+
+module.exports = IslandGenerator

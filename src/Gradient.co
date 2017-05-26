@@ -1,0 +1,24 @@
+class Gradient
+	(@resolution=512) -> @points = []; @bitmap = null
+	addPoint: !(color, point) -> @points.push {color, point}
+	getColor: !(point) ->
+		if not @bitmap then @bitmap = @render()
+		if point < 0 then point = 0
+		if point > 1 then point = 1
+		offset = (0 | point * @bitmap.width) * 4
+		data = @bitmap.data
+		return "rgb(#{data[offset]}, #{data[offset+1]}, #{data[offset+2]})"
+
+	render: !->
+		canvas = document.createElement("canvas")
+		canvas.width = @resolution
+		canvas.height = 10
+		ctx = canvas.getContext("2d")
+		gradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
+		for {color, point} of @points
+			gradient.addColorStop(point, color)
+		ctx.fillStyle = gradient
+		ctx.fillRect(0, 0, canvas.width, canvas.height)
+		return ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+module.exports = Gradient

@@ -1,0 +1,172 @@
+const {lerp, closestPointOnSegment, getSquaredDistance, getDistance} = require('./util.co')
+const {rand} = require('./rand.co')
+
+class HeightmapGenerator
+	(@ig, @mapWidth, @mapHeight) ->
+		@scaleX = @mapWidth / @ig.width
+		@scaleY = @mapHeight / @ig.height
+
+		#for document.querySelectorAll("canvas") => &parentNode.removeChild(&)
+
+		@debugCanvas = document.createElement("canvas")
+			&width = @mapWidth
+			&height = @mapHeight
+			@debugCtx = &getContext("2d")
+			&style.border = "1px solid red"
+			&style.width = "500px"
+			&style.height = "500px"
+			document.body.appendChild(&)
+
+		@scratchCanvas = document.createElement("canvas")
+			&width = @mapWidth
+			&height = @mapHeight
+			@scratchCtx = &getContext("2d")
+			&style.border = "1px solid black"
+
+			# document.body.appendChild(&)
+
+		@heightmapData = new Float32Array(mapWidth * mapHeight)
+
+		@segments = @_generateSegments()
+		console.log "#{@segments.length} segments."
+
+	_generateSegments: !->
+		segments = []
+		for layer of @ig.layers
+			height = layer.height
+			for a from 0 til layer.length
+				b = (a + 1) % layer.length
+				pa = [layer[a][0] * @scaleX, layer[a][1] * @scaleY]
+				pb = [layer[b][0] * @scaleX, layer[b][1] * @scaleY]
+				segments.push ([pa, pb] <<< {height})
+		return segments
+
+	_updateDebugCanvas: !->
+		max = 0
+		for @heightmapData => max = max >? &
+		@debugCtx
+			&fillStyle = "purple"
+			&fillRect(0, 0, @mapWidth, @mapHeight)
+			data = &getImageData(0, 0, @mapWidth, @mapHeight)
+		for height, i of @heightmapData
+			if height > 0 then
+				color = 0 | (height / max * 255.0)
+				data.data[i * 4 + 0] = color
+				data.data[i * 4 + 1] = color
+				data.data[i * 4 + 2] = color
+				data.data[i * 4 + 3] = 255
+		@debugCtx.putImageData(data, 0, 0)
+		@debugCtx.fillStyle = "white"
+		@debugCtx.fillText("max = #{0|max}", 3, @mapHeight - 3)
+
+	_determineBaseRegion: !->
+		sc = @scratchCtx
+		sc.fillStyle = "black"
+		sc.fillRect(0, 0, @mapWidth, @mapHeight)
+		sc.fillStyle = 'red'
+		for layer of @ig.layers
+			continue if layer.height > 0
+			sc.beginPath()
+			for [x, y], i of layer
+				x *= @scaleX
+				y *= @scaleY
+				if i == 0 then
+					sc.moveTo(x, y)
+				else
+					sc.lineTo(x, y)
+			sc.closePath()
+			sc.fill()
+
+		# Un-antialias the polygon...
+		data = sc.getImageData(0, 0, @mapWidth, @mapHeight)
+		for i from 0 til @mapWidth * @mapHeight
+			off = i * 4
+			if data.data[off] >= 250
+				data.data[off++] = 255
+			else
+				data.data[off++] = 0
+			data.data[off++] = 0
+			data.data[off++] = 0
+			data.data[off++] = 255
+		sc.putImageData(data, 0, 0)
+
+
+
+	startGenerate: !->
+		@_determineBaseRegion()
+		@_updateDebugCanvas()
+		@y = 0
+
+	generateNextLine: !->
+		if @y >= @mapHeight then return false
+		@generateLine(@y)
+		@y++
+		return true
+
+	generateLine: !(y) ->
+		console.log "generating line: #{y}"
+		scratchData = @scratchCtx.getImageData(0, y, @mapWidth, 1).data
+		for x from 0 til @mapWidth
+			red = scratchData[x * 4]
+			if red == 255 then
+				dataOffset = y * @mapWidth + x
+				const N_SAMPLES = 5
+				const SAMPLE_JITTER = 1
+				height = 0
+				for i from 0 til N_SAMPLES
+					height += @generatePoint(x + rand(-SAMPLE_JITTER, +SAMPLE_JITTER), y + rand(-SAMPLE_JITTER, SAMPLE_JITTER))
+				@heightmapData[dataOffset] = height / N_SAMPLES
+		@_updateDebugCanvas()
+
+	_getSegmentDistances: !(x, y) ->
+		distances = []
+		xy = [x, y]
+		for segment of @segments
+			{height} = segment
+			closestPt = closestPointOnSegment(xy, segment[0], segment[1])
+			distanceSqr = getSquaredDistance(x, y, closestPt[0], closestPt[1])
+			distances.push {distance: distanceSqr, pt: closestPt, height}
+		distances = distances.sort((a, b) -> (a.distance - b.distance))
+		return distances
+
+
+	generatePoint: !(x, y) ->
+		distances = @_getSegmentDistances(x, y)
+		ds1 = distances[0]
+		# higherDs = null
+		# lowerDs = null
+		for distance of distances
+			if distance.height != ds1.height then
+				ds2 = distance
+				break
+		# 	if not lowerDs and distance.height < closestDs.height then
+		# 		lowerDs = distance
+		# 	if not higherDs and distance.height > closestDs.height then
+		# 		higherDs = distance
+		# 	if lowerDs and higherDs then break
+
+		# ds2 = lowerDs or higherDs or ds1
+
+		# if lowerDs and higherDs then
+		# 	if lowerDs.distance < higherDs.distance then
+		# 		ds2 = lowerDs
+		# #	else
+		# #		ds2 = higherDs
+
+		# if not ds2 then
+		# 	return ds1.height
+		#console.log x, y
+		#console.log ds1
+		#console.log ds2
+		ds2 = ds2 or ds1
+		pt1 = ds1.pt
+		pt2 = ds2.pt
+		cpd = closestPointOnSegment([x, y], pt1, pt2)
+		interpLength = getDistance(pt1[0], pt1[1], pt2[0], pt2[1])
+		[x, y] = cpd
+		d1 = getDistance(x, y, pt1[0], pt1[1])
+		#d2 = getDistance(x, y, pt2[0], pt2[1])
+		interpAlpha = d1 / interpLength
+		return lerp(ds1.height, ds2.height, interpAlpha)
+
+module.exports = HeightmapGenerator

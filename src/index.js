@@ -1,1 +1,2 @@
-require('./isl.co');
+const {main} = require('./isl.co');
+main();
